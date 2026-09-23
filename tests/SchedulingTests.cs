@@ -81,6 +81,23 @@ public class SchedulingTests : IAsyncLifetime
         var a=await Create();var cancelled=await Mutate(a,"cancel",key:"cancel");Assert.Equal(cancelled.Version,(await Mutate(a,"cancel",key:"cancel")).Version);
         await Assert.ThrowsAsync<BusinessException>(()=>Mutate(cancelled,"cancel"));await Create();await using var db=Db();Assert.Equal(4,await db.SlotClaims.CountAsync());Assert.Equal(3,await db.Audits.CountAsync());
     }
+    [Fact] public async Task A09_TasksConfirmationAndReset()
+    {
+        var a=await Create();Assert.Equal("prerequisites_incomplete",(await Assert.ThrowsAsync<BusinessException>(()=>Mutate(a,"confirm"))).Code);
+        await using var db=Db();var tasks=await db.Tasks.OrderBy(x=>x.Id).ToListAsync();
+        foreach(var task in tasks)a=await Mutate(a,"complete-task",new(a.Version,TaskId:task.Id));
+        var confirmed=await Mutate(a,"confirm");Assert.Equal("Confirmed",confirmed.Status);
+        var moved=await Mutate(confirmed,"reschedule",new(confirmed.Version,1,Book(hour:10).StartUtc,Book(hour:10).EndUtc));
+        Assert.Equal("Pending",moved.Status);Assert.Equal(0,await db.Tasks.CountAsync(x=>x.Completed));
+        Assert.Equal(2,await db.Audits.CountAsync(x=>x.Action=="TaskCompleted"));
+        await Assert.ThrowsAsync<BusinessException>(()=>Mutate(moved,"confirm"));
+        var cancelled=await Mutate(moved,"cancel");await Assert.ThrowsAsync<BusinessException>(()=>Mutate(cancelled,"complete-task",new(cancelled.Version,TaskId:tasks[0].Id)));
+    }
+    [Fact] public async Task A08_TaskAndCancelUseSameVersionBoundary()
+    {
+        var a=await Create();await using var db=Db();var task=await db.Tasks.FirstAsync();var gate=new PointGate("after-preread");var taskWrite=Mutate(a,"complete-task",new(a.Version,TaskId:task.Id),probe:gate);await gate.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));await Mutate(a,"cancel");gate.Release.SetResult();
+        Assert.Equal("version_conflict",(await Assert.ThrowsAsync<BusinessException>(()=>taskWrite)).Code);Assert.Equal(0,await db.Tasks.CountAsync(x=>x.Completed));Assert.Equal(0,await db.SlotClaims.CountAsync());
+    }
     public class FailProbe : ITransactionProbe { public Task Reach(string point,CancellationToken ct) { if(point=="after-release")throw new InvalidOperationException("Injected rollback");return Task.CompletedTask;} }
     public class PointGate(string target) : ITransactionProbe
     {

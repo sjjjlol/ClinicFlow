@@ -30,3 +30,9 @@ Evidence: `./scripts/test.sh` 6/6 passed on isolated real MySQL (A02/A03/A04/A10
 Evidence: `./scripts/test.sh` 11/11 passed (new A05–A08/A12 tests, all M2 regressions). Injected exception after old-claim deletion restores old time/state/version/claims and leaves no extra audit, Outbox or idempotency result. Controlled stale pre-read test moves to another resource while the first request waits and correctly rejects the stale command. HTTP test passes mutation role restrictions, stale version, reschedule and cancel. Frontend build passed. Browser test covers create → resource change → cancel. Initial browser test selectors were tightened to the native combobox role. M2 097b42f pushed, remote CI succeeded.
 
 An IDE-generated `ClinicFlow .sln` appeared during development; preserved as a local user file, excluded from this feature commit.
+
+## M4 — Prerequisites and confirmation
+
+2026-09-24: TaskOperator completes prerequisites; Scheduler confirms only when all current tasks are complete; all operations share the appointment version boundary. Reschedule resets live tasks while audit retains completion details. Detail deep links use `?appointment=<id>`.
+
+Evidence: `./scripts/test.sh` 13/13 passed, including A09 task/confirm/reset/terminal-state rules and A08 concurrent task versus cancellation; HTTP A09/A18 role matrix passed. Browser A21 passed create → reject premature confirm → switch to TaskOperator → complete both tasks → switch to Scheduler → confirm → reschedule/reset → cancel. Three existing browser tests passed. The first A21 attempt navigated before login finished; the test now waits for the authenticated workspace before navigation. Build passed. M3 df9bdbc pushed and remote CI succeeded. Next M5 integration worker/receiver/lease/failure UI.

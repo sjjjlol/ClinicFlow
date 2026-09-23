@@ -8,11 +8,11 @@ public static class Endpoints
         var group = app.MapGroup("/api").RequireAuthorization();
         group.MapPost("/appointments", async (Booking input, SchedulingService service, HttpContext ctx, CancellationToken ct) =>
             await service.Create(input, ctx.User.FindFirstValue(ClaimTypes.NameIdentifier)!, ctx.Request.Headers["Idempotency-Key"].ToString(), ctx.TraceIdentifier, ct)).RequireAuthorization("schedule");
-        foreach (var operation in new[] { "reschedule", "cancel" })
+        foreach (var operation in new[] { "reschedule", "cancel", "confirm", "complete-task" })
         {
             var action = operation;
             group.MapPost("/appointments/{id}/" + action, async (string id, Mutation input, SchedulingService service, HttpContext ctx, CancellationToken ct) =>
-                await service.Mutate(id, action, input, ctx.User.FindFirstValue(ClaimTypes.NameIdentifier)!, ctx.Request.Headers["Idempotency-Key"].ToString(), ctx.TraceIdentifier, ct)).RequireAuthorization("schedule");
+                await service.Mutate(id, action, input, ctx.User.FindFirstValue(ClaimTypes.NameIdentifier)!, ctx.Request.Headers["Idempotency-Key"].ToString(), ctx.TraceIdentifier, ct)).RequireAuthorization(action == "complete-task" ? "tasks" : "schedule");
         }
         group.MapGet("/appointments", async (ClinicDb db, int? page, int? size, string? status, int? resourceId, CancellationToken ct) =>
         {

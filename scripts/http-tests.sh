@@ -7,3 +7,5 @@ set +a
 node tests/auth.mjs
 
 node tests/http-scheduling.mjs
+
+node tests/http-tasks.mjs
