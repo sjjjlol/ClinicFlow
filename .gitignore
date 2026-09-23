@@ -1,0 +1,12 @@
+.DS_Store
+.env
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+**/test-results/
+**/playwright-report/
+artifacts/
+*.user
+
+*.tsbuildinfo

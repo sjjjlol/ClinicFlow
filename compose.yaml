@@ -1,0 +1,21 @@
+name: clinicflow
+services:
+  db:
+    image: mysql:8.4.8
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?run scripts/configure.sh}
+      MYSQL_DATABASE: clinicflow
+      MYSQL_USER: clinicflow
+      MYSQL_PASSWORD: ${DB_PASSWORD:?run scripts/configure.sh}
+    ports: ["127.0.0.1:3308:3306"]
+    volumes: ["mysql-data:/var/lib/mysql"]
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+  mock:
+    build: ./mock-external
+    ports: ["127.0.0.1:5090:5090"]
+volumes:
+  mysql-data:
