@@ -50,3 +50,9 @@ M4 b6f1547 pushed, remote CI succeeded. M5 verified and ready to commit. Next M6
 2026-09-24: fixed HL7 FHIR 4.0.1, bounded Patient/Appointment reads, CapabilityStatement, OperationOutcome errors, UTC instants and appointment version headers. Custom Outbox remains a separate protocol. Limits and official sources are documented in docs/fhir-r4.md.
 
 Evidence: FhirTests 4/4 passed (all three state mappings and Patient fields); HTTP A20 passed metadata/read/auth/invalid id/not found/unsupported query/write. M5 99d8a70 pushed, remote CI succeeded. M6 ready to commit; next M7 isolated labs and RCA.
+
+## M7 — Isolated failure labs
+
+2026-09-24 Asia/Shanghai (evidence timestamps use UTC). L1 normal and fixed runs deterministically produced [1,1]/last-write-wins versus [1,0]/version conflict. L2 response loss produced two side effects without deduplication versus one with it. L3 ran 100,000 generated rows, resource=42, offset=5, limit=50, five query samples per variant: median 9.576ms before and 0.999ms after; plan changes from 100,000-row table scan/sort to covering index range scan; ordered IDs identical. Hardware/runtime details and full plans retained in docs/evidence. No production benefit claims.
+
+L1/L3 use only clinicflow_labs; L2 uses temporary SQLite and a loopback server. Each rerun resets its own experiment. Task instructions and separate answer document added, plus RCA/English defect update and UI entry. Normal xUnit suite rerun after labs (22 tests) and frontend build passed. M6 e0c7024 pushed, remote CI succeeded. Next M8 migration/backup drill, packaging, learning materials and complete acceptance review.

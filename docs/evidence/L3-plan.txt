@@ -1,0 +1,13 @@
+UTC=2026-09-23T16:54:06.4184270Z; OS=macOS 26.6.2; arch=Arm64; .NET=10.0.12; CPUs=12; MySQL=8.4.8
+before PLAN: -> Limit/Offset: 50/5 row(s)  (cost=10000 rows=50) (actual time=11.7..11.7 rows=50 loops=1)
+    -> Sort: slow_appointments.start_utc, slow_appointments.id, limit input to 55 row(s) per chunk  (cost=10000 rows=100000) (actual time=11.7..11.7 rows=55 loops=1)
+        -> Filter: ((slow_appointments.resource_id = 42) and (slow_appointments.start_utc >= TIMESTAMP'2030-01-01 00:00:00'))  (cost=10000 rows=100000) (actual time=0.769..11.6 rows=1000 loops=1)
+            -> Table scan on slow_appointments  (cost=10000 rows=100000) (actual time=0.763..9.28 rows=100000 loops=1)
+
+before: rows=100000; resource=42; offset=5; limit=50; median of 5=9.576ms; resultCount=50
+after PLAN: -> Limit/Offset: 50/5 row(s)  (cost=203 rows=50) (actual time=0.0352..0.0407 rows=50 loops=1)
+    -> Filter: ((slow_appointments.resource_id = 42) and (slow_appointments.start_utc >= TIMESTAMP'2030-01-01 00:00:00'))  (cost=203 rows=1000) (actual time=0.0333..0.0384 rows=55 loops=1)
+        -> Covering index range scan on slow_appointments using ix_resource_time_id over (resource_id = 42 AND '2030-01-01 00:00:00' <= start_utc)  (cost=203 rows=1000) (actual time=0.0317..0.034 rows=55 loops=1)
+
+after: rows=100000; resource=42; offset=5; limit=50; median of 5=0.999ms; resultCount=50
+L3 PASS identical ordered result IDs before/after. Laptop experiment only; timings are not production claims.

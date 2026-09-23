@@ -1,0 +1,2 @@
+UTC=2026-09-23T16:54:03.9590530Z; OS=macOS 26.6.2; arch=Arm64; .NET=10.0.12; CPUs=12; MySQL=8.4.8
+L1 fixed=False; both read v1; affected=[1,1]; final=client-B,v3
