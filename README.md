@@ -17,3 +17,7 @@ cd frontend && npm ci && npm run dev
 Open http://localhost:5173. Database migrations run on API startup. Stop infrastructure with `docker compose down`; `docker compose down -v` deletes this project's database (only use to reset fictional data).
 
 Implementation progress: [development log](docs/development-progress.md). Requirements: [SPEC](SPEC.md).
+
+Demo usernames: `scheduler`, `taskoperator`, `admin`. Read `DEMO_PASSWORD` from your local `.env`; it is shared by the three fictional accounts and only used on first seed. Password changes in `.env` do not change existing database hashes.
+
+With the API running, run `./scripts/http-tests.sh`. For browser tests, load `.env` into the environment, start the frontend, then run `cd frontend && npx playwright install chromium && npm run test:e2e`. `PW_CHANNEL=chrome` uses an installed Chrome instead.

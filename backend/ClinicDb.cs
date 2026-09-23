@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 namespace ClinicFlow;
 public class ClinicDb(DbContextOptions<ClinicDb> options) : DbContext(options)
 {
+    public DbSet<DemoUser> Users => Set<DemoUser>();
     public DbSet<Patient> Patients => Set<Patient>();
     public DbSet<Resource> Resources => Set<Resource>();
     protected override void OnModelCreating(ModelBuilder b)
@@ -12,3 +13,5 @@ public class ClinicDb(DbContextOptions<ClinicDb> options) : DbContext(options)
 }
 public class Patient { public int Id { get; set; } public string Name { get; set; } = ""; public string Identifier { get; set; } = ""; }
 public class Resource { public int Id { get; set; } public string Name { get; set; } = ""; public string Kind { get; set; } = ""; }
+
+public class DemoUser { public string Id { get; set; } = ""; public string Role { get; set; } = ""; public string PasswordHash { get; set; } = ""; }
