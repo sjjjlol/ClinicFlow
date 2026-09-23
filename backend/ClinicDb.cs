@@ -1,3 +1,4 @@
+using ClinicFlow.Integration;
 using ClinicFlow.Scheduling;
 using Microsoft.EntityFrameworkCore;
 namespace ClinicFlow;
@@ -14,6 +15,10 @@ public class ClinicDb(DbContextOptions<ClinicDb> options) : DbContext(options)
     public DbSet<Resource> Resources => Set<Resource>();
     protected override void OnModelCreating(ModelBuilder b)
     {
+        b.Entity<SyncAttempt>().Property(x => x.MessageId).HasMaxLength(36);
+        b.Entity<SyncAttempt>().Property(x => x.LeaseToken).HasMaxLength(36);
+        b.Entity<SyncAttempt>().HasIndex(x => x.LeaseToken).IsUnique();
+        b.Entity<SyncAttempt>().HasIndex(x => new { x.MessageId, x.Id });
         b.Entity<Appointment>().Property(x => x.Id).HasMaxLength(36);
         b.Entity<Appointment>().Property(x => x.Version).IsConcurrencyToken();
         b.Entity<Appointment>().Property(x => x.Status).HasMaxLength(20);

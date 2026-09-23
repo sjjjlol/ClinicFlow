@@ -23,3 +23,5 @@ Demo usernames: `scheduler`, `taskoperator`, `admin`. Read `DEMO_PASSWORD` from 
 With the API running, run `./scripts/http-tests.sh`. For browser tests, load `.env` into the environment, start the frontend, then run `cd frontend && npx playwright install chromium && npm run test:e2e`. `PW_CHANNEL=chrome` uses an installed Chrome instead.
 
 Run `./scripts/test.sh` for xUnit tests against a separate `clinicflow_tests` MySQL database. This command resets that test database for each test, never the application database. See [transaction ADR](docs/adr/003-transactions.md) for locking and idempotency.
+
+The Outbox worker sends snapshots to the persistent mock receiver. `docker compose stop mock` simulates an outage; local bookings continue. `docker compose start mock` allows retries to recover. Admin can inspect the queue and manually retry Failed messages. Run `node --test mock-external/receiver.test.mjs` for isolated response-loss/restart/ordering contracts. With `.env` exported and the API running, `node tests/http-integration.mjs` briefly stops/restarts the mock container and verifies recovery.

@@ -36,3 +36,11 @@ An IDE-generated `ClinicFlow .sln` appeared during development; preserved as a l
 2026-09-24: TaskOperator completes prerequisites; Scheduler confirms only when all current tasks are complete; all operations share the appointment version boundary. Reschedule resets live tasks while audit retains completion details. Detail deep links use `?appointment=<id>`.
 
 Evidence: `./scripts/test.sh` 13/13 passed, including A09 task/confirm/reset/terminal-state rules and A08 concurrent task versus cancellation; HTTP A09/A18 role matrix passed. Browser A21 passed create → reject premature confirm → switch to TaskOperator → complete both tasks → switch to Scheduler → confirm → reschedule/reset → cancel. Three existing browser tests passed. The first A21 attempt navigated before login finished; the test now waits for the authenticated workspace before navigation. Build passed. M3 df9bdbc pushed and remote CI succeeded. Next M5 integration worker/receiver/lease/failure UI.
+
+## M5 — Durable external synchronization
+
+2026-09-24: scoped Outbox worker, persistent attempts, token/expiry guarded leases, bounded retry with jitter, permanent-error classification, admin idempotent retry and sync UI. Mock receiver persists receipts and monotonic snapshots in a separate SQLite volume.
+
+Evidence: 18 distinct xUnit/MySQL tests passed; isolated receiver contract passed A14/A15 (save then disconnect, process restart, duplicate receipt, delayed old snapshot); real `tests/http-integration.mjs` passed A13 by stopping the Docker receiver, creating a local booking, observing persisted retry error, restarting the receiver, and verifying same MessageId and one receipt. Admin browser queue/history passed. Frontend build passed. A16 tests use two independent DB connections and an injected clock to reclaim a lease and reject stale completion. A17 proves five attempts, Failed, same-ID manual retry and retained history. All fault modes are disabled in normal Compose.
+
+M4 b6f1547 pushed, remote CI succeeded. M5 verified and ready to commit. Next M6 bounded FHIR R4 read adapter.

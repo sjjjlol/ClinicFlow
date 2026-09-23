@@ -1,3 +1,4 @@
+using ClinicFlow.Integration;
 using ClinicFlow.Scheduling;
 using ClinicFlow;
 using Microsoft.AspNetCore.Antiforgery;
@@ -25,6 +26,9 @@ builder.Services.AddRateLimiter(o => o.AddPolicy("login", ctx => RateLimitPartit
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new UtcDateTimeConverter()));
 builder.Services.AddScoped<SchedulingService>();
 builder.Services.AddSingleton<ITransactionProbe, NoTransactionProbe>();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddHttpClient<Dispatcher>(client => client.Timeout = TimeSpan.FromSeconds(5));
+if (builder.Configuration["Integration:Enabled"] != "false") builder.Services.AddHostedService<OutboxWorker>();
 var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
@@ -59,6 +63,9 @@ app.Use(async (ctx, next) =>
 app.MapGet("/api/health", async (ClinicDb db) => new { status = await db.Database.CanConnectAsync() ? "ready" : "unavailable" });
 app.MapIdentity();
 app.MapScheduling();
+app.MapGet("/api/sync", async (ClinicDb db, CancellationToken ct) => await db.Outbox.AsNoTracking().OrderByDescending(x=>x.NextAttemptUtc).ThenBy(x=>x.Id).Take(100).Select(x=>new { x.Id,x.AppointmentId,x.Version,x.Status,x.Attempts,x.LastError,x.NextAttemptUtc }).ToListAsync(ct)).RequireAuthorization("admin");
+app.MapGet("/api/sync/{id}/attempts", async (string id, ClinicDb db, CancellationToken ct) => await db.Set<SyncAttempt>().AsNoTracking().Where(x=>x.MessageId==id).OrderBy(x=>x.Id).ToListAsync(ct)).RequireAuthorization("admin");
+app.MapPost("/api/sync/{id}/retry", async (string id, SchedulingService service, HttpContext ctx, CancellationToken ct) => await service.RetrySync(id,ctx.User.Identity!.Name!,ctx.Request.Headers["Idempotency-Key"].ToString(),ctx.TraceIdentifier,ct)).RequireAuthorization("admin");
 app.MapGet("/api/patients", async (ClinicDb db, CancellationToken ct) => await db.Patients.AsNoTracking().OrderBy(x => x.Id).ToListAsync(ct)).RequireAuthorization();
 app.MapGet("/api/resources", async (ClinicDb db, CancellationToken ct) => await db.Resources.AsNoTracking().OrderBy(x => x.Id).ToListAsync(ct)).RequireAuthorization();
 app.Run();

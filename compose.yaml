@@ -17,5 +17,9 @@ services:
   mock:
     build: ./mock-external
     ports: ["127.0.0.1:5090:5090"]
+    environment:
+      INTEGRATION_TOKEN: ${INTEGRATION_TOKEN:?run scripts/configure.sh}
+    volumes: ["external-data:/data"]
 volumes:
   mysql-data:
+  external-data:

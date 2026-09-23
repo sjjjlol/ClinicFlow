@@ -83,6 +83,18 @@ public class SchedulingService(ClinicDb db, ITransactionProbe probe)
             return a;
         }, ct);
 
+    public Task<Appointment> RetrySync(string id, string actor, string key, string correlation, CancellationToken ct) =>
+        Execute(actor, "retry-sync:"+id, key, new { id }, async () =>
+        {
+            var message=(await db.Outbox.FromSqlInterpolated($"SELECT * FROM Outbox WHERE Id={id} FOR UPDATE").ToListAsync(ct)).SingleOrDefault()
+                ?? throw new BusinessException("message_missing", "同步消息不存在",404);
+            if(message.Status!="Failed")throw new BusinessException("sync_not_failed","仅失败消息可手动重试，请刷新队列");
+            message.Status="Pending";message.Attempts=0;message.NextAttemptUtc=DateTime.UtcNow;message.LeaseToken=null;message.LeaseUntilUtc=null;
+            var a=await db.Appointments.AsNoTracking().SingleAsync(x=>x.Id==message.AppointmentId,ct);
+            db.Audits.Add(new AuditEntry{AppointmentId=a.Id,Action="SyncRetry",Actor=actor,Version=a.Version,Summary=JsonSerializer.Serialize(new { messageId=id },Json),CorrelationId=correlation});
+            return a;
+        },ct);
+
     async Task<Appointment> Execute<T>(string actor, string operation, string key, T payload, Func<Task<Appointment>> action, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(key) || key.Length > 128) throw new BusinessException("invalid_key", "请提供1–128字符的 Idempotency-Key", 400);

@@ -52,3 +52,9 @@ test('A21 complete collaborative appointment lifecycle',async({page})=>{
  page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'取消预约',exact:true}).click();await expect(page.getByRole('heading',{name:'预约详情'})).toContainText('已取消');
  await page.screenshot({path:'test-results/lifecycle.png',fullPage:true});
 });
+test('Admin observes persistent sync queue and attempt history',async({page})=>{
+ await page.goto('/');await page.getByRole('combobox',{name:'演示角色'}).selectOption('admin');await page.getByLabel('密码',{exact:true}).fill(process.env.DEMO_PASSWORD!);await page.getByRole('button',{name:'进入工作台'}).click();
+ await page.getByRole('button',{name:'同步队列'}).click();await expect(page.getByRole('heading',{name:'外部同步队列'})).toBeVisible();await expect(page.getByRole('button',{name:'新建预约'})).toHaveCount(0);
+ await page.getByRole('button',{name:'投递记录',exact:true}).first().click();await expect(page.getByRole('dialog',{name:'投递记录'})).toBeVisible();
+ await page.screenshot({path:'test-results/sync-queue.png',fullPage:true});
+});
