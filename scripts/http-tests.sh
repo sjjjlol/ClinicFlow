@@ -5,3 +5,5 @@ set -a
 source .env
 set +a
 node tests/auth.mjs
+
+node tests/http-scheduling.mjs

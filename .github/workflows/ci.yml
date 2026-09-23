@@ -16,3 +16,14 @@ jobs:
       - run: dotnet restore backend --locked-mode && dotnet build backend --no-restore
       - run: npm ci && npm run build
         working-directory: frontend
+      - run: ./scripts/configure.sh && docker compose up -d --wait db
+      - run: ./scripts/test.sh
+      - run: |
+          ./scripts/api.sh > /tmp/api.log 2>&1 &
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:5080/api/health && break || sleep 1; done
+          ./scripts/http-tests.sh
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: diagnostics
+          path: /tmp/api.log

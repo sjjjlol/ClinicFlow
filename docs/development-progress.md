@@ -16,3 +16,9 @@ UI decision: Apple-inspired light surface, restrained blue, rounded cards, Chine
 Evidence: `./scripts/http-tests.sh` passed A01/A18 authentication subset (three roles, invalid password, missing CSRF, protected reads, logout); `PW_CHANNEL=chrome npm run test:e2e` passed login/catalog/logout in Chrome, screenshot inspected at 1440×1000; `npm run build` passed; DemoIdentity migration applied to real MySQL. Business-write authorization tests will be added with their endpoints. Bundled Chromium download was still in progress, so local verification used installed Chrome.
 
 M0: f0a64f2 pushed to origin/main, GitHub Actions succeeded. M1: verified, ready to commit. Next: M2 atomic multi-slot bookings, idempotency, audit and Outbox persistence.
+
+## M2 — Atomic creation and queries
+
+2026-09-23: multi-slot creation, transactional audit/Outbox/tasks, request fingerprint/replay, paginated list/detail/occupied-slot query, Chinese create/detail/conflict UI. All API DateTime values serialize with UTC Z.
+
+Evidence: `./scripts/test.sh` 6/6 passed on isolated real MySQL (A02/A03/A04/A10/A11/A19); `./scripts/http-tests.sh` passed authentication plus booking/replay/403/pagination/time-zone contracts; `PW_CHANNEL=chrome npm run test:e2e` 2/2 passed; frontend build passed. Initial test-project compile exposed a transitive EF patch mismatch; fixed by directly pinning EF Relational 9.0.20 and regenerating lockfiles. CI now runs real MySQL and HTTP tests. M1 17dcf41 pushed, remote CI succeeded. M2 ready to commit; next M3 reschedule/cancel/version conflict.

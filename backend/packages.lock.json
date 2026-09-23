@@ -19,6 +19,15 @@
           "Mono.TextTemplating": "3.0.0"
         }
       },
+      "Microsoft.EntityFrameworkCore.Relational": {
+        "type": "Direct",
+        "requested": "[9.0.20, )",
+        "resolved": "9.0.20",
+        "contentHash": "84oLYJjAA8hSrwPfkq0cm9dBdf3uFbBwqJVYjmS4zEoKJ87cj/Knyp1iYAHe95ToJHeo8APAPG0OlA6S4GUUlw==",
+        "dependencies": {
+          "Microsoft.EntityFrameworkCore": "9.0.20"
+        }
+      },
       "Pomelo.EntityFrameworkCore.MySql": {
         "type": "Direct",
         "requested": "[9.0.0, )",
@@ -120,14 +129,6 @@
         "type": "Transitive",
         "resolved": "9.0.20",
         "contentHash": "WCNEWRZGuYycp0vU9aAfEKGZOr7hGrJP4SpJkl2KzXzKqH9UY/2h6j2L3JYa/AZbKD7EffQGk09NmyEcml/OwQ=="
-      },
-      "Microsoft.EntityFrameworkCore.Relational": {
-        "type": "Transitive",
-        "resolved": "9.0.20",
-        "contentHash": "84oLYJjAA8hSrwPfkq0cm9dBdf3uFbBwqJVYjmS4zEoKJ87cj/Knyp1iYAHe95ToJHeo8APAPG0OlA6S4GUUlw==",
-        "dependencies": {
-          "Microsoft.EntityFrameworkCore": "9.0.20"
-        }
       },
       "Microsoft.Extensions.DependencyModel": {
         "type": "Transitive",

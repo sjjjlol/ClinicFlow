@@ -1,3 +1,4 @@
+using ClinicFlow.Scheduling;
 using ClinicFlow;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -21,6 +22,9 @@ builder.Services.AddAuthorizationBuilder()
     .AddPolicy("admin", p => p.RequireRole("Admin"));
 builder.Services.AddAntiforgery(o => o.HeaderName = "X-CSRF-TOKEN");
 builder.Services.AddRateLimiter(o => o.AddPolicy("login", ctx => RateLimitPartition.GetFixedWindowLimiter(ctx.Connection.RemoteIpAddress?.ToString() ?? "local", _ => new FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1) })));
+builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new UtcDateTimeConverter()));
+builder.Services.AddScoped<SchedulingService>();
+builder.Services.AddSingleton<ITransactionProbe, NoTransactionProbe>();
 var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
@@ -33,6 +37,12 @@ app.Use(async (ctx, next) =>
     ctx.Response.Headers["X-Correlation-ID"] = ctx.TraceIdentifier;
     ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
     await next();
+});
+app.Use(async (ctx, next) =>
+{
+    try { await next(); }
+    catch (BusinessException ex) { ctx.Response.StatusCode = ex.Status; await ctx.Response.WriteAsJsonAsync(new { code = ex.Code, message = ex.Message, correlationId = ctx.TraceIdentifier }); }
+    catch (Exception ex) when (ex is not OperationCanceledException) { app.Logger.LogError(ex, "Request failed {CorrelationId}", ctx.TraceIdentifier); ctx.Response.StatusCode = 500; await ctx.Response.WriteAsJsonAsync(new { code = "internal_error", message = "操作未完成，请使用原请求标识重试", correlationId = ctx.TraceIdentifier }); }
 });
 app.UseAuthentication();
 app.UseAuthorization();
@@ -48,6 +58,7 @@ app.Use(async (ctx, next) =>
 });
 app.MapGet("/api/health", async (ClinicDb db) => new { status = await db.Database.CanConnectAsync() ? "ready" : "unavailable" });
 app.MapIdentity();
+app.MapScheduling();
 app.MapGet("/api/patients", async (ClinicDb db, CancellationToken ct) => await db.Patients.AsNoTracking().OrderBy(x => x.Id).ToListAsync(ct)).RequireAuthorization();
 app.MapGet("/api/resources", async (ClinicDb db, CancellationToken ct) => await db.Resources.AsNoTracking().OrderBy(x => x.Id).ToListAsync(ct)).RequireAuthorization();
 app.Run();

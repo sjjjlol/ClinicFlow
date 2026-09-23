@@ -21,3 +21,5 @@ Implementation progress: [development log](docs/development-progress.md). Requir
 Demo usernames: `scheduler`, `taskoperator`, `admin`. Read `DEMO_PASSWORD` from your local `.env`; it is shared by the three fictional accounts and only used on first seed. Password changes in `.env` do not change existing database hashes.
 
 With the API running, run `./scripts/http-tests.sh`. For browser tests, load `.env` into the environment, start the frontend, then run `cd frontend && npx playwright install chromium && npm run test:e2e`. `PW_CHANNEL=chrome` uses an installed Chrome instead.
+
+Run `./scripts/test.sh` for xUnit tests against a separate `clinicflow_tests` MySQL database. This command resets that test database for each test, never the application database. See [transaction ADR](docs/adr/003-transactions.md) for locking and idempotency.
