@@ -45,6 +45,49 @@ public class SchedulingTests : IAsyncLifetime
         await using var db=Db();Assert.Equal(1,await db.Appointments.CountAsync());Assert.Equal(1,await db.Audits.CountAsync());
     }
     [Fact] public async Task A19_AdjacentSlotsDoNotOverlap() {await Create();await Create(Book(hour:10));await using var db=Db();Assert.Equal(8,await db.SlotClaims.CountAsync());}
+    public async Task<Appointment> Mutate(Appointment a, string action, Mutation? mutation = null, string? key = null, ITransactionProbe? probe = null)
+    {
+        await using var db = Db(); return await new SchedulingService(db, probe ?? new NoTransactionProbe()).Mutate(a.Id, action, mutation ?? new Mutation(a.Version), "scheduler", key ?? Guid.NewGuid().ToString(), "test", default);
+    }
+    [Fact] public async Task A05_ConflictAndInjectedFailureRestoreOldClaims()
+    {
+        var a = await Create(); await Create(Book(hour:11));
+        var conflict = new Mutation(a.Version, 1, Book(hour:11).StartUtc, Book(hour:11).EndUtc);
+        await Assert.ThrowsAsync<BusinessException>(()=>Mutate(a,"reschedule",conflict));
+        var next = new Mutation(a.Version, 2, Book(hour:12).StartUtc,Book(hour:12).EndUtc);
+        await Assert.ThrowsAsync<InvalidOperationException>(()=>Mutate(a,"reschedule",next,probe:new FailProbe()));
+        await using var db=Db();var saved=await db.Appointments.FindAsync(a.Id);Assert.Equal(a.StartUtc,saved!.StartUtc);Assert.Equal(a.Version,saved.Version);Assert.Equal(a.Status,saved.Status);Assert.Equal(4,await db.SlotClaims.CountAsync(x=>x.AppointmentId==a.Id));Assert.Equal(0,await db.SlotClaims.CountAsync(x=>x.ResourceId==2));Assert.Equal(2,await db.Audits.CountAsync());Assert.Equal(2,await db.Outbox.CountAsync());Assert.Equal(2,await db.Idempotency.CountAsync());
+    }
+    [Fact] public async Task A06_OverlapWithOwnSlots()
+    {
+        var a=await Create();var b=Book(hour:9,minute:30);var moved=await Mutate(a,"reschedule",new(a.Version,1,b.StartUtc,b.EndUtc));
+        await using var db=Db();Assert.Equal(2,moved.Version);Assert.Equal("Pending",moved.Status);var claims=await db.SlotClaims.OrderBy(x=>x.SlotStartUtc).ToListAsync();Assert.Equal(4,claims.Count);Assert.Equal(b.StartUtc.UtcDateTime,claims.First().SlotStartUtc);
+    }
+    [Fact] public async Task A07_OppositeResourceMovesHaveConsistentOrder()
+    {
+        var a=await Create();var b=await Create(Book(resource:2,hour:11));
+        var results=await Task.WhenAll(Mutate(a,"reschedule",new(a.Version,2,Book(hour:9).StartUtc,Book(hour:9).EndUtc)),Mutate(b,"reschedule",new(b.Version,1,Book(hour:11).StartUtc,Book(hour:11).EndUtc))).WaitAsync(TimeSpan.FromSeconds(15));
+        Assert.All(results,x=>Assert.Equal(2,x.Version));await using var db=Db();Assert.Equal(8,await db.SlotClaims.CountAsync());
+    }
+    [Fact] public async Task A08_ConcurrentOldVersionAndChangedPreread()
+    {
+        var a=await Create();var gate=new PointGate("after-preread");var stale=Mutate(a,"cancel",probe:gate);await gate.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        var moved=await Mutate(a,"reschedule",new(a.Version,2,Book(hour:11).StartUtc,Book(hour:11).EndUtc));gate.Release.SetResult();
+        Assert.Equal("version_conflict",(await Assert.ThrowsAsync<BusinessException>(()=>stale)).Code);
+        await using var db=Db();Assert.Equal(moved.ResourceId,(await db.Appointments.FindAsync(a.Id))!.ResourceId);Assert.Equal(4,await db.SlotClaims.CountAsync(x=>x.ResourceId==2));
+    }
+    [Fact] public async Task A12_CancelReplayReleasesOnceAndRebookingWorks()
+    {
+        var a=await Create();var cancelled=await Mutate(a,"cancel",key:"cancel");Assert.Equal(cancelled.Version,(await Mutate(a,"cancel",key:"cancel")).Version);
+        await Assert.ThrowsAsync<BusinessException>(()=>Mutate(cancelled,"cancel"));await Create();await using var db=Db();Assert.Equal(4,await db.SlotClaims.CountAsync());Assert.Equal(3,await db.Audits.CountAsync());
+    }
+    public class FailProbe : ITransactionProbe { public Task Reach(string point,CancellationToken ct) { if(point=="after-release")throw new InvalidOperationException("Injected rollback");return Task.CompletedTask;} }
+    public class PointGate(string target) : ITransactionProbe
+    {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public async Task Reach(string point,CancellationToken ct){if(point!=target)return;Entered.TrySetResult();await Release.Task.WaitAsync(TimeSpan.FromSeconds(10),ct);}
+    }
     public class GateProbe : ITransactionProbe
     {
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);

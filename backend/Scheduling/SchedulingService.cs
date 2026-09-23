@@ -28,6 +28,44 @@ public class SchedulingService(ClinicDb db, ITransactionProbe probe)
             return a;
         }, ct);
 
+    public Task<Appointment> Mutate(string id, string operation, Mutation input, string actor, string key, string correlation, CancellationToken ct) =>
+        Execute(actor, operation + ":" + id, key, input with { StartUtc = input.StartUtc?.ToUniversalTime(), EndUtc = input.EndUtc?.ToUniversalTime() }, async () =>
+        {
+            var before = await db.Appointments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, ct)
+                ?? throw new BusinessException("appointment_missing", "预约不存在", 404);
+            await probe.Reach("after-preread", ct);
+            await LockResources([before.ResourceId, input.ResourceId ?? before.ResourceId], ct);
+            var a = (await db.Appointments.FromSqlInterpolated($"SELECT * FROM Appointments WHERE Id={id} FOR UPDATE").ToListAsync(ct)).Single();
+            if (a.ResourceId != before.ResourceId || a.Version != input.Version)
+                throw new BusinessException("version_conflict", "预约已被其他人更新，请刷新详情后重新操作");
+            if (a.Status == "Cancelled") throw new BusinessException("invalid_state", "已取消的预约不可继续修改");
+            if (operation == "reschedule")
+            {
+                if (input.ResourceId is null || input.StartUtc is null || input.EndUtc is null)
+                    throw new BusinessException("invalid_time", "改期须提供资源及起止时间", 400);
+                var slots = Rules.Slots(input.StartUtc.Value.UtcDateTime, input.EndUtc.Value.UtcDateTime);
+                await CheckFree(input.ResourceId.Value, slots, a.Id, ct);
+                db.SlotClaims.RemoveRange(await db.SlotClaims.Where(x => x.AppointmentId == id).ToListAsync(ct));
+                await db.SaveChangesAsync(ct); // deletion remains uncommitted; overlapping claims can now be reinserted
+                await probe.Reach("after-release", ct);
+                a.ResourceId = input.ResourceId.Value; a.StartUtc = input.StartUtc.Value.UtcDateTime; a.EndUtc = input.EndUtc.Value.UtcDateTime;
+                a.Status = "Pending";
+                Claim(a, slots);
+                foreach (var task in await db.Tasks.Where(x => x.AppointmentId == id).ToListAsync(ct))
+                { task.Completed = false; task.CompletedBy = null; task.CompletedUtc = null; }
+            }
+            else if (operation == "cancel")
+            {
+                db.SlotClaims.RemoveRange(await db.SlotClaims.Where(x => x.AppointmentId == id).ToListAsync(ct));
+                a.Status = "Cancelled";
+            }
+            else throw new BusinessException("invalid_operation", "未知操作", 400);
+            a.Version++; a.UpdatedUtc = DateTime.UtcNow;
+            Record(a, operation == "cancel" ? "Cancelled" : "Rescheduled", actor, correlation);
+            await probe.Reach("before-save", ct);
+            return a;
+        }, ct);
+
     async Task<Appointment> Execute<T>(string actor, string operation, string key, T payload, Func<Task<Appointment>> action, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(key) || key.Length > 128) throw new BusinessException("invalid_key", "请提供1–128字符的 Idempotency-Key", 400);

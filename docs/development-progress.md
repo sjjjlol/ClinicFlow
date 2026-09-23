@@ -22,3 +22,11 @@ M0: f0a64f2 pushed to origin/main, GitHub Actions succeeded. M1: verified, ready
 2026-09-23: multi-slot creation, transactional audit/Outbox/tasks, request fingerprint/replay, paginated list/detail/occupied-slot query, Chinese create/detail/conflict UI. All API DateTime values serialize with UTC Z.
 
 Evidence: `./scripts/test.sh` 6/6 passed on isolated real MySQL (A02/A03/A04/A10/A11/A19); `./scripts/http-tests.sh` passed authentication plus booking/replay/403/pagination/time-zone contracts; `PW_CHANNEL=chrome npm run test:e2e` 2/2 passed; frontend build passed. Initial test-project compile exposed a transitive EF patch mismatch; fixed by directly pinning EF Relational 9.0.20 and regenerating lockfiles. CI now runs real MySQL and HTTP tests. M1 17dcf41 pushed, remote CI succeeded. M2 ready to commit; next M3 reschedule/cancel/version conflict.
+
+## M3 — Reschedule, cancel and optimistic version checks
+
+2026-09-24: ordered resource locks plus appointment lock/revalidation, self-overlap rescheduling, task reset, cancellation and slot release, actionable version conflict UI.
+
+Evidence: `./scripts/test.sh` 11/11 passed (new A05–A08/A12 tests, all M2 regressions). Injected exception after old-claim deletion restores old time/state/version/claims and leaves no extra audit, Outbox or idempotency result. Controlled stale pre-read test moves to another resource while the first request waits and correctly rejects the stale command. HTTP test passes mutation role restrictions, stale version, reschedule and cancel. Frontend build passed. Browser test covers create → resource change → cancel. Initial browser test selectors were tightened to the native combobox role. M2 097b42f pushed, remote CI succeeded.
+
+An IDE-generated `ClinicFlow .sln` appeared during development; preserved as a local user file, excluded from this feature commit.
