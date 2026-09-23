@@ -1,3 +1,4 @@
+using ClinicFlow.Fhir;
 using ClinicFlow.Integration;
 using ClinicFlow.Scheduling;
 using ClinicFlow;
@@ -63,6 +64,7 @@ app.Use(async (ctx, next) =>
 app.MapGet("/api/health", async (ClinicDb db) => new { status = await db.Database.CanConnectAsync() ? "ready" : "unavailable" });
 app.MapIdentity();
 app.MapScheduling();
+app.MapFhir();
 app.MapGet("/api/sync", async (ClinicDb db, CancellationToken ct) => await db.Outbox.AsNoTracking().OrderByDescending(x=>x.NextAttemptUtc).ThenBy(x=>x.Id).Take(100).Select(x=>new { x.Id,x.AppointmentId,x.Version,x.Status,x.Attempts,x.LastError,x.NextAttemptUtc }).ToListAsync(ct)).RequireAuthorization("admin");
 app.MapGet("/api/sync/{id}/attempts", async (string id, ClinicDb db, CancellationToken ct) => await db.Set<SyncAttempt>().AsNoTracking().Where(x=>x.MessageId==id).OrderBy(x=>x.Id).ToListAsync(ct)).RequireAuthorization("admin");
 app.MapPost("/api/sync/{id}/retry", async (string id, SchedulingService service, HttpContext ctx, CancellationToken ct) => await service.RetrySync(id,ctx.User.Identity!.Name!,ctx.Request.Headers["Idempotency-Key"].ToString(),ctx.TraceIdentifier,ct)).RequireAuthorization("admin");

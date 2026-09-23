@@ -44,3 +44,9 @@ Evidence: `./scripts/test.sh` 13/13 passed, including A09 task/confirm/reset/ter
 Evidence: 18 distinct xUnit/MySQL tests passed; isolated receiver contract passed A14/A15 (save then disconnect, process restart, duplicate receipt, delayed old snapshot); real `tests/http-integration.mjs` passed A13 by stopping the Docker receiver, creating a local booking, observing persisted retry error, restarting the receiver, and verifying same MessageId and one receipt. Admin browser queue/history passed. Frontend build passed. A16 tests use two independent DB connections and an injected clock to reclaim a lease and reject stale completion. A17 proves five attempts, Failed, same-ID manual retry and retained history. All fault modes are disabled in normal Compose.
 
 M4 b6f1547 pushed, remote CI succeeded. M5 verified and ready to commit. Next M6 bounded FHIR R4 read adapter.
+
+## M6 — FHIR R4 read adapter
+
+2026-09-24: fixed HL7 FHIR 4.0.1, bounded Patient/Appointment reads, CapabilityStatement, OperationOutcome errors, UTC instants and appointment version headers. Custom Outbox remains a separate protocol. Limits and official sources are documented in docs/fhir-r4.md.
+
+Evidence: FhirTests 4/4 passed (all three state mappings and Patient fields); HTTP A20 passed metadata/read/auth/invalid id/not found/unsupported query/write. M5 99d8a70 pushed, remote CI succeeded. M6 ready to commit; next M7 isolated labs and RCA.
