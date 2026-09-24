@@ -1,43 +1,55 @@
-name: clinicflow
+# ===== ClinicFlow Compose 编排：db（MySQL）+ mock（模拟外部方）+ app（可选全量）=====
+# 两种模式：
+#   日常开发  docker compose up -d                → 只起 db + mock，app 本机 dotnet run（改码即时生效）
+#   交付验证  docker compose --profile full up -d --build --wait   → app 也容器化，等健康检查通过
+name: clinicflow   # 项目名：容器/网络/卷的前缀
 services:
   db:
-    image: mysql:8.4.8
+    image: mysql:8.4.8          # 钉死精确版本（不用 latest）：可复现，升级是显式决策
     environment:
+      # ${VAR:?提示}：.env 缺失该变量则报错中止（防裸奔）；.env 由 scripts/configure.sh 生成，已 gitignore
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?run scripts/configure.sh}
-      MYSQL_DATABASE: clinicflow
+      MYSQL_DATABASE: clinicflow    # 首次启动自动建库 + 建应用账号
       MYSQL_USER: clinicflow
       MYSQL_PASSWORD: ${DB_PASSWORD:?run scripts/configure.sh}
-    ports: ["127.0.0.1:${DB_PORT:-3308}:3306"]
-    volumes: ["mysql-data:/var/lib/mysql"]
-    healthcheck:
+    # 127.0.0.1: 只绑回环地址——本机可连，局域网不可达（开发环境数据库不暴露给邻居）
+    # ${DB_PORT:-3308}：:- 是默认值语法（区别于 :? 的报错语法）
+    ports: ["127.0.0.1:${DB_PORT:-3308}:3306"]   # 宿主端口:容器端口
+    volumes: ["mysql-data:/var/lib/mysql"]       # 命名卷持久化：容器删了数据还在（down -v 才删卷）
+    healthcheck:                  # 真·就绪探测：用应用账号走 TCP 真查一次 SELECT 1
+      # $$ 转义：Compose 里 $ 是变量展开，$$ 才是传给容器内 shell 的单个 $（取容器自己的环境变量）
       test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_PASSWORD mysql --protocol=TCP -h127.0.0.1 -uclinicflow -Dclinicflow -e 'SELECT 1'"]
       interval: 3s
       timeout: 3s
-      retries: 40
-  mock:
+      retries: 40                 # 3s×40 ≈ 容忍 MySQL 首次初始化 2 分钟
+  mock:                            # 模拟外部集成方（Outbox 投递目标），Dockerfile 在 mock-external/
     build: ./mock-external
     ports: ["127.0.0.1:${MOCK_PORT:-5090}:5090"]
     environment:
-      INTEGRATION_TOKEN: ${INTEGRATION_TOKEN:?run scripts/configure.sh}
-    volumes: ["external-data:/data"]
+      INTEGRATION_TOKEN: ${INTEGRATION_TOKEN:?run scripts/configure.sh}   # 与 app 共享的集成令牌
+    volumes: ["external-data:/data"]   # mock 的持久化：已收消息/receipt（重启后仍认幂等记录）
   app:
-    profiles: [full]
-    build: .
+    profiles: [full]              # 档案：默认 compose up 不起本服务；--profile full 才构建启动
+    build: .                      # 用根目录 Dockerfile 现场构建镜像
     environment:
       ASPNETCORE_ENVIRONMENT: Development
-      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_URLS: http://+:8080        # 容器内监听 8080（对照 Dockerfile 的 EXPOSE）
+      # Server=db：Compose 网络内用【服务名】互访，不是 localhost！（容器内 localhost 是容器自己）
+      # __ 双下划线 = .NET 配置嵌套键（ConnectionStrings:Clinic）
       ConnectionStrings__Clinic: Server=db;Database=clinicflow;User=clinicflow;Password=${DB_PASSWORD}
-      DEMO_PASSWORD: ${DEMO_PASSWORD}
+      DEMO_PASSWORD: ${DEMO_PASSWORD}       # 首次启动种子账号密码（Identity.Seed 用）
       INTEGRATION_TOKEN: ${INTEGRATION_TOKEN}
-      Integration__Url: http://mock:5090
+      Integration__Url: http://mock:5090    # Outbox 投递目标 = mock 服务名
     ports: ["127.0.0.1:${APP_PORT:-5080}:8080"]
+    # Data Protection 密钥持久化：无此卷则每次重建容器密钥轮换 → 已发 Cookie 全部失效
     volumes: ["data-protection:/home/app/.aspnet/DataProtection-Keys"]
     depends_on:
       db:
-        condition: service_healthy
+        condition: service_healthy   # 等 MySQL 真正可连（不只是进程起来）再起 app；
+                                     # app 启动即跑 MigrateAsync，依赖这个健康检查消除竞态
       mock:
         condition: service_started
-volumes:
+volumes:                            # 声明命名卷（Docker 管理的持久化目录）
   data-protection:
   mysql-data:
   external-data:
