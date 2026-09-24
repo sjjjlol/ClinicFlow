@@ -3,6 +3,7 @@
 // using = Java 的 import（注意 C# 里 using 还有"自动释放资源"的第二含义，见下文 await using）。
 using System.Threading.RateLimiting;
 using ClinicFlow;
+using ClinicFlow.Agent;
 using ClinicFlow.Fhir;
 using ClinicFlow.Integration;
 using ClinicFlow.Scheduling;
@@ -79,6 +80,7 @@ builder.Services.ConfigureHttpJsonOptions(o =>
 );
 // AddScoped：每请求一个实例（Spring @RequestScope）；SchedulingService 内部持有 Scoped 的 ClinicDb。
 builder.Services.AddScoped<SchedulingService>();
+builder.Services.AddAppointmentAgent();
 // AddSingleton：全应用一个实例；接口→实现 注册（≈ Spring 的 @Bean 返回接口类型）。
 builder.Services.AddSingleton<ITransactionProbe, NoTransactionProbe>();
 builder.Services.AddSingleton(TimeProvider.System); // 时钟抽象，测试可替换（≈ Java Clock）
@@ -201,6 +203,7 @@ app.MapGet(
         new { status = await db.Database.CanConnectAsync() ? "ready" : "unavailable" }
 );
 app.MapIdentity();   // 认证端点组（扩展方法，见 Identity.cs）
+app.MapAppointmentAgent();
 app.MapScheduling(); // 预约端点组（见 Scheduling/Endpoints.cs）
 app.MapFhir();       // FHIR R4 只读适配（见 Fhir/FhirAdapter.cs）
 app.MapOpenApi("/api/openapi/{documentName}.json").RequireAuthorization();
