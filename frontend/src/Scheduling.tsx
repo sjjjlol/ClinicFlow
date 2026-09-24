@@ -1,3 +1,4 @@
+import AppointmentAssistant from "./AppointmentAssistant";
 import { useDialogFocus } from "./useDialogFocus";
 import { useEffect, useState, type FormEvent } from "react";
 import { api, type Catalog, type User } from "./api";
@@ -222,6 +223,17 @@ export default function Scheduling({
   }
   return (
     <>
+      {user.role === "Scheduler" && (
+        <AppointmentAssistant
+          patients={patients}
+          selectedPatientId={draft.patientId}
+          onPatientChange={(id) => setDraft((v) => ({ ...v, patientId: id }))}
+          onCreated={async (a) => {
+            await refresh();
+            await open(a.id);
+          }}
+        />
+      )}
       <section className="panel">
         <div className="panel-heading">
           <h2>
