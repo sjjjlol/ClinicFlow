@@ -45,6 +45,12 @@ Scheduler creates a Pending appointment and immediately reserves consecutive 15-
 
 The background worker uses short claim/completion transactions and HTTP outside transactions. A persistent receiver deduplicates MessageId and rejects older snapshot versions. Admin can inspect attempts and retry failed messages. This is at-least-once delivery with receiver deduplication.
 
+## Kimi appointment agent / 预约协调助手
+
+Scheduler can ask for an appointment in natural language, inspect up to three candidate cards, and explicitly confirm creation. Real slot conflicts trigger a new search under the same constraints and require fresh confirmation. The existing scheduling transaction remains authoritative. Configure backend-only `KIMI_API_KEY` and `Agent__Model` in local `.env`; without a key, the ordinary booking form still works.
+
+See [setup, architecture, evaluation and demonstration guide](docs/appointment-agent.md). The optional conflict simulator is available only in Development with `Agent__DemoEnabled=true`.
+
 ## Verification
 
 ```sh
