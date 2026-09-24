@@ -6,8 +6,8 @@ test("agent cards require explicit confirmation and fresh confirmation after con
   const booking = {
     patientId: 1,
     resourceId: 1,
-    startUtc: "2031-01-06T04:00:00Z",
-    endUtc: "2031-01-06T04:45:00Z",
+    startUtc: "2031-01-06T04:00:00+00:00",
+    endUtc: "2031-01-06T04:45:00+00:00",
   };
   const candidate = {
     id: "first",
@@ -21,8 +21,8 @@ test("agent cards require explicit confirmation and fresh confirmation after con
     id: "second",
     booking: {
       ...booking,
-      startUtc: "2031-01-06T05:00:00Z",
-      endUtc: "2031-01-06T05:45:00Z",
+      startUtc: "2031-01-06T05:00:00+00:00",
+      endUtc: "2031-01-06T05:45:00+00:00",
     },
   };
   let writes = 0;
@@ -110,8 +110,8 @@ test("agent preserves the same candidate when a confirmation response is lost", 
     booking: {
       patientId: 1,
       resourceId: 1,
-      startUtc: "2031-01-06T04:00:00Z",
-      endUtc: "2031-01-06T04:45:00Z",
+      startUtc: "2031-01-06T04:00:00+00:00",
+      endUtc: "2031-01-06T04:45:00+00:00",
     },
     patientName: "林晓（模拟）",
     resourceName: "预约室 A",

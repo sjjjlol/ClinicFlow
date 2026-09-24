@@ -344,6 +344,19 @@ public class AgentTests : IAsyncLifetime
         Assert.Throws<BusinessException>(() => store.Get(session.Id, "scheduler"));
     }
 
+    [Fact]
+    public async Task G14_ExplicitResourceSurvivesModelOmission()
+    {
+        await using var db = fixture.Db();
+        var result = await Agent(
+                db,
+                new Scripted(Call("search_slots", Query with { ResourceId = null }), Say())
+            )
+            .Message(new(null, "2030-01-07下午45分钟，仅预约室A", 1), "scheduler", default);
+        Assert.Equal("proposed", result.Status);
+        Assert.All(result.Candidates, c => Assert.Equal(1, c.Booking.ResourceId));
+    }
+
     class FixedClock : TimeProvider
     {
         public DateTimeOffset Now { get; set; } = new(2029, 1, 1, 0, 0, 0, TimeSpan.Zero);
@@ -353,6 +366,13 @@ public class AgentTests : IAsyncLifetime
 
     class Scripted(params JsonObject[] replies) : IAgentModel
     {
+        readonly JsonObject[] steps = replies
+            .SelectMany(r =>
+                r["tool_calls"]?[0]?["function"]?["name"]?.GetValue<string>() == "search_slots"
+                    ? new[] { Call("list_catalog", new { }), r }
+                    : new[] { r }
+            )
+            .ToArray();
         int index;
 
         public Task<JsonObject> Respond(
@@ -361,8 +381,8 @@ public class AgentTests : IAsyncLifetime
             CancellationToken ct
         ) =>
             Task.FromResult(
-                index < replies.Length
-                    ? replies[index++]
+                index < steps.Length
+                    ? steps[index++]
                     : throw new HttpRequestException("fixture unavailable")
             );
     }

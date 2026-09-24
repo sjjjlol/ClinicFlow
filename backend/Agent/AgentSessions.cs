@@ -27,6 +27,7 @@ public class AgentSession(string owner, DateTimeOffset expires)
     public JsonArray History { get; set; } = [];
     public List<Candidate> Candidates { get; set; } = [];
     public SearchRequest? Constraints { get; set; }
+    public int? RequiredResourceId { get; set; }
     public int Turns { get; set; }
     public string? ConfirmingId { get; set; }
     public Appointment? Appointment { get; set; }

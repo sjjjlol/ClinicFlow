@@ -42,6 +42,7 @@ try {
     const count = await c.request('/api/appointments?size=1');
     assert.equal(count.body.total, before.body.total + 1); // only the simulated competing booking
     assert.ok(r.body.candidates[0].booking.startUtc >= p.candidates[0].booking.endUtc);
+    for (const candidate of r.body.candidates) assert.equal(candidate.booking.resourceId, 1);
     const created = await c.request(`/api/agent/${p.sessionId}/confirm`, {candidateId: r.body.candidates[0].id});
     assert.equal(created.body.status, 'created'); cleanup.push(created.body.appointment);
     const replay = await c.request(`/api/agent/${p.sessionId}/confirm`, {candidateId: r.body.candidates[0].id});

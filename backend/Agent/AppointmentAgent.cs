@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using ClinicFlow.Scheduling;
 using Microsoft.EntityFrameworkCore;
 
@@ -20,7 +21,7 @@ public class AppointmentAgent(
         你是 ClinicFlow 预约协调助手，只处理虚构数据的新建预约。用简洁中文纯文本交流，不要Markdown表格，时间明细由系统候选卡展示。
         你没有任何写入工具。用户在聊天里说“确认”也不能创建；必须点击系统候选卡的确认按钮。
         必须明确患者、时长、日期范围，缺少就追问，绝不能猜测。页面已选患者可沿用。
-        用 list_catalog 查询患者与资源，不猜编号。用户明确姓名与页面患者冲突时以用户为准，重名则追问。
+        每轮查询空位前必须先用 list_catalog 查询患者与资源，不猜编号。用户指定资源时必须设置其ResourceId，不能用null查全部。用户明确姓名与页面患者冲突时以用户为准，重名则追问。
         工作日09:00–17:00，上海时区，时长15到240分钟且为15的倍数；下午指12:00–17:00。
         search_slots 只在条件齐全后调用；所有可用性必须来自工具结果，不能自行算空位或编造候选。
         用户未指定资源可传null；未指定每日窗口可传null。不支持临床适配、节假日、长期偏好、改期或取消。
@@ -46,6 +47,27 @@ public class AppointmentAgent(
                 throw new BusinessException("turn_limit", "本会话已达20轮，请开启新会话", 429);
             s.Candidates = [];
             s.Constraints = null;
+            // Bind explicit exclusive resource phrases to catalog IDs before involving the model.
+            // General natural-language interpretation remains a model responsibility; this narrow guard
+            // prevents a common failure: "仅预约室A" becoming resourceId:null.
+            var normalized = Regex.Replace(input.Message, @"\s+", "");
+            var resources = await db.Resources.AsNoTracking().ToListAsync(ct);
+            var exclusive = resources
+                .Where(r =>
+                    Regex.IsMatch(
+                        normalized,
+                        @"(?:仅限|仅|只要|只用|只选|限定|必须使用)"
+                            + Regex.Escape(Regex.Replace(r.Name, @"\s+", ""))
+                    )
+                )
+                .ToArray();
+            if (exclusive.Length == 1)
+                s.RequiredResourceId = exclusive[0].Id;
+            else if (
+                resources.Any(r => normalized.Contains(Regex.Replace(r.Name, @"\s+", "")))
+                || Regex.IsMatch(normalized, "任意|不限|都可以")
+            )
+                s.RequiredResourceId = null;
             s.History.Add(new JsonObject { ["role"] = "user", ["content"] = input.Message });
             var context =
                 $"\n当前上海日期时间：{TimeZoneInfo.ConvertTime(clock.GetUtcNow(), Availability.Zone):yyyy-MM-dd HH:mm}。页面选中患者ID：{input.SelectedPatientId?.ToString() ?? "未选择"}。";
@@ -68,6 +90,7 @@ public class AppointmentAgent(
         var historyBefore = s.History.DeepClone().AsArray();
         var searches = 0;
         var searchedSuccessfully = false;
+        var catalogRead = false;
         var calls = 0;
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(TimeSpan.FromSeconds(90));
@@ -130,6 +153,7 @@ public class AppointmentAgent(
                                     .Select(x => new { x.Id, x.Name })
                                     .ToListAsync(deadline.Token),
                             };
+                            catalogRead = true;
                             outcome = "目录查询成功";
                         }
                         else if (name == "search_slots")
@@ -139,6 +163,22 @@ public class AppointmentAgent(
                                     args,
                                     SchedulingService.Json
                                 ) ?? throw new JsonException();
+                            if (!catalogRead)
+                                throw new BusinessException(
+                                    "catalog_required",
+                                    "请先调用list_catalog取得患者和资源编号，再按用户指定资源查询",
+                                    400
+                                );
+                            if (s.RequiredResourceId is int required)
+                            {
+                                if (query.ResourceId is not null && query.ResourceId != required)
+                                    throw new BusinessException(
+                                        "resource_constraint",
+                                        "用户限定了预约资源，不得改用其他资源",
+                                        400
+                                    );
+                                query = query with { ResourceId = required };
+                            }
                             // Freeze the original constraints across repeated searches and conflict recovery.
                             if (s.Constraints is not null && query != s.Constraints)
                                 throw new BusinessException(
@@ -146,6 +186,7 @@ public class AppointmentAgent(
                                     "不可自动改变约束，请询问用户后在下一轮查询",
                                     400
                                 );
+                            args = JsonSerializer.Serialize(query, SchedulingService.Json);
                             searches++;
                             var candidates = await availability.Search(query, deadline.Token);
                             searchedSuccessfully = true;

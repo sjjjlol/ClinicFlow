@@ -50,11 +50,12 @@ export function time(s: string) {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-  }).format(new Date(s.endsWith("Z") ? s : s + "Z"));
+  }).format(new Date(/(Z|[+-]\d{2}:\d{2})$/.test(s) ? s : s + "Z"));
 }
 function localInput(s: string) {
   return new Date(
-    new Date(s.endsWith("Z") ? s : s + "Z").getTime() + 8 * 3600000,
+    new Date(/(Z|[+-]\d{2}:\d{2})$/.test(s) ? s : s + "Z").getTime() +
+      8 * 3600000,
   )
     .toISOString()
     .slice(0, 16);
