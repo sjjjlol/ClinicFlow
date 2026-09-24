@@ -55,3 +55,19 @@ jobs:
             /tmp/api.log
             /tmp/ui.log
             frontend/test-results
+  container-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.13.1
+      - name: Start from fresh volumes with the documented command
+        run: ./scripts/start.sh
+      - name: Verify the container API, seeds and bundled UI
+        run: |
+          curl -fsS http://127.0.0.1:5080/ | grep 'ClinicFlow'
+          ./scripts/http-tests.sh
+      - name: Container diagnostics
+        if: failure()
+        run: docker compose --profile full logs --tail 150

@@ -11,3 +11,5 @@ node tests/http-scheduling.mjs
 node tests/http-tasks.mjs
 
 node tests/http-fhir.mjs
+
+node tests/http-response-loss.mjs

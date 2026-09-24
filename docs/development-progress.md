@@ -12,8 +12,8 @@ Target: origin/main → git@github.com:sjjjlol/ClinicFlow.git. Per-slice commit/
 | M5 | Delivered | 99d8a70; remote CI passed |
 | M6 | Delivered | e0c7024; remote CI passed |
 | M7 | Delivered | dbeff8f; remote CI passed |
-| M8a | Verified, ready to commit | Packaging, migration/restore drill, learning docs, 23 .NET tests and 6 bundled-UI browser tests passed |
-| M8b | In progress | Clean clone and final expanded CI verification |
+| M8a | Delivered | e80c473; expanded remote CI passed, portable artifact uploaded |
+| M8b | Verified, ready to commit | Fresh-volume readiness fix, clean deployment, response-loss and failure-UI regression tests; final commit CI tracked in GitHub Actions |
 
 UI decision: Apple-inspired light surface, restrained blue, rounded cards, Chinese labels and English domain terms. No clinical claims.
 
@@ -73,3 +73,10 @@ L1/L3 use only clinicflow_labs; L2 uses temporary SQLite and a loopback server. 
 Actual upgrade drill retained appointment identity and all six record counts, then restored an old-schema mysqldump backup. The first generated migration incorrectly dropped an FK-supporting index; it was corrected to retain the old index and add the new one. Full rerun and EF pending-model check passed (details in upgrade-checklist.md).
 
 Verification: locked .NET restore; 23/23 xUnit tests; receiver response-loss/restart contract; full HTTP suite including generated OpenAPI; actual Docker outage/recovery; 6/6 browser tests against http://127.0.0.1:5080 bundled container (including complete role lifecycle and mobile keyboard interaction). Docker image build and scripts/start.sh succeeded. Desktop and 390px mobile screenshots inspected. No public deployment. Expanded CI now includes browser/labs/upgrade verification and a portable artifact. M7 dbeff8f remote CI confirmed success. Next: clean checkout with fresh volumes and final CI result.
+
+
+## M8b — Clean bootstrap regression and final acceptance
+
+Fresh clone testing found a MySQL initialization readiness race. The socket ping was replaced by a TCP application-user query; disposable volumes were removed and the complete start command passed from empty volumes. All HTTP checks and 6 browser workflows passed on the clean container, and the added sync-failure/network-retry UI test passed separately. A new loopback HTTP proxy test proves an actual API response disconnect after success still replays one business effect. CI now repeats fresh-volume container startup in its own job. Details: docs/evidence/clean-start.md.
+
+A01–A23 have executable evidence in docs/acceptance.md. M8a e80c473 is pushed and its full CI succeeded (run 35961883622), including a portable artifact. Final readiness/test/doc changes are verified locally and ready for commit; the live README CI badge and GitHub run for the final commit carry its remote outcome. The user-created `ClinicFlow .sln` is preserved, unmodified and uncommitted. Completed remains the user's independent exercise.

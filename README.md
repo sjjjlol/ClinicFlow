@@ -1,5 +1,7 @@
 # ClinicFlow
 
+[![CI](https://github.com/sjjjlol/ClinicFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/sjjjlol/ClinicFlow/actions/workflows/ci.yml)
+
 A runnable scheduling study project for a Java developer learning C#/.NET. Built with AI assistance, with deterministic failure exercises and a separate requirement for the learner to implement. All patients and resources are fictional. This is not clinical software, an Elekta product, or a certified FHIR implementation.
 
 The Chinese UI uses an Apple-inspired visual style: quiet surfaces, clear typography, rounded panels and restrained blue accents.
@@ -68,7 +70,7 @@ npm run test:e2e
 
 With `.env` exported, `node tests/http-integration.mjs` briefly stops/restarts the mock container and verifies real outage recovery. `docker compose stop mock` / `docker compose start mock` also demonstrate it manually. After five failures, Admin must retry. Fault-control HTTP endpoints are disabled in normal Compose.
 
-CI restores locked dependencies, builds, runs MySQL/HTTP/receiver/browser tests, exercises labs and upgrades, then publishes a portable ASP.NET + React artifact. Dockerfile provides repeatable container packaging; there is no automatic public deployment. [Acceptance evidence](docs/acceptance.md) and [development history](docs/development-progress.md) distinguish actual execution from pending checks.
+CI independently starts the container from fresh volumes, restores locked dependencies, builds, runs MySQL/HTTP/receiver/browser tests, exercises labs and upgrades, then publishes a portable ASP.NET + React artifact. Dockerfile provides repeatable container packaging; there is no automatic public deployment. [Acceptance evidence](docs/acceptance.md) and [development history](docs/development-progress.md) distinguish actual execution from pending checks.
 
 ## Reading route / 学习入口
 

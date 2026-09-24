@@ -169,16 +169,71 @@ test("Admin observes persistent sync queue and attempt history", async ({
     fullPage: true,
   });
 });
-test('Mobile workspace and keyboard dialog dismissal', async ({ page }) => {
+test("Mobile workspace and keyboard dialog dismissal", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/');
-  await page.getByLabel('密码', { exact: true }).fill(process.env.DEMO_PASSWORD!);
-  await page.getByRole('button', { name: '进入工作台' }).click();
-  await expect(page.getByRole('heading', { name: '预约工作台', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '新建预约' }).click();
-  await expect(page.getByRole('dialog')).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog')).toHaveCount(0);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
-  await page.screenshot({ path: 'test-results/mobile.png', fullPage: true });
+  await page.goto("/");
+  await page
+    .getByLabel("密码", { exact: true })
+    .fill(process.env.DEMO_PASSWORD!);
+  await page.getByRole("button", { name: "进入工作台" }).click();
+  await expect(
+    page.getByRole("heading", { name: "预约工作台", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "新建预约" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBeTruthy();
+  await page.screenshot({ path: "test-results/mobile.png", fullPage: true });
+});
+test("Sync failure UI preserves retry identity after a network error", async ({
+  page,
+}) => {
+  // Controlled view fixture; real retry/lease persistence is covered by MySQL tests.
+  let delivered = false,
+    calls = 0;
+  const keys: string[] = [];
+  await page.route("**/api/sync", (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: "ui-fixture",
+          appointmentId: "example",
+          version: 1,
+          status: delivered ? "Delivered" : "Failed",
+          attempts: 5,
+          lastError: delivered ? null : "HTTP 422",
+          nextAttemptUtc: "2030-01-01T00:00:00Z",
+        },
+      ],
+    }),
+  );
+  await page.route("**/api/sync/ui-fixture/retry", async (route) => {
+    keys.push(route.request().headers()["idempotency-key"]);
+    if (calls++ === 0) await route.abort("failed");
+    else {
+      delivered = true;
+      await route.fulfill({ json: {} });
+    }
+  });
+  await page.goto("/");
+  await page.getByRole("combobox", { name: "演示角色" }).selectOption("admin");
+  await page
+    .getByLabel("密码", { exact: true })
+    .fill(process.env.DEMO_PASSWORD!);
+  await page.getByRole("button", { name: "进入工作台" }).click();
+  await page.getByRole("button", { name: "同步队列" }).click();
+  await expect(page.getByText("同步失败", { exact: true })).toBeVisible();
+  await expect(page.getByText("HTTP 422", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "重新触发", exact: true }).click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  await page.getByRole("button", { name: "重新触发", exact: true }).click();
+  await expect(page.getByText("已同步", { exact: true })).toBeVisible();
+  expect(keys).toHaveLength(2);
+  expect(keys[0]).toBeTruthy();
+  expect(keys[0]).toBe(keys[1]);
 });

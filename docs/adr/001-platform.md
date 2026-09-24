@@ -5,3 +5,5 @@
 Sources checked: https://github.com/PomeloFoundation/Pomelo.EntityFrameworkCore.MySql#compatibility and https://dotnet.microsoft.com/en-us/download/dotnet/10.0 .
 
 Local SDK is installed under ~/.local/share/clinicflow-dotnet when no global SDK exists. No machine-wide PATH changes. Real MySQL is mandatory for transaction tests. EF handles ordinary tracking and migrations; locking statements use parameterized SQL within the same transaction. Java comparison: DbContext resembles a scoped JPA persistence context, but async operations on a single context must not overlap.
+
+Fresh-volume readiness must use a TCP SELECT with the application user and target database. `mysqladmin ping` via the local socket can succeed against the image's temporary initialization server before TCP is available. The clean-checkout test found this distinction; Compose now waits for the real application connection path. Do not work around this by enabling blanket EF transaction retries.
