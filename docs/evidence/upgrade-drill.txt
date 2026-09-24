@@ -1,0 +1,5 @@
+Prepared old schema with one appointment, four claims, two tasks, one audit, one outbox and idempotency result.
+2026-09-23T16:58:50.4184150Z: prepare PASS; migrations=4; latest=20260923164608_SyncAttempts; all six entity row counts preserved.
+Applied additive ResourceScheduleIndex migration; appointment identity preserved.
+2026-09-23T16:58:52.5403870Z: upgrade PASS; migrations=5; latest=20260923165716_ResourceScheduleIndex; all six entity row counts preserved.
+2026-09-23T16:58:54.6550330Z: verify-old PASS; migrations=4; latest=20260923164608_SyncAttempts; all six entity row counts preserved.

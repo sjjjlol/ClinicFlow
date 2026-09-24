@@ -1,0 +1,9 @@
+.git
+.env
+**/bin
+**/obj
+**/node_modules
+**/dist
+**/test-results
+artifacts
+.DS_Store

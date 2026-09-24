@@ -7,3 +7,5 @@ assert.equal((await c.request('/fhir/r4/Patient/nope')).status,400);assert.equal
 assert.equal((await c.request('/fhir/r4/Patient/1',{})).status,405);
 const a=(await c.request('/api/appointments?size=1')).body.items[0];assert.equal((await c.request('/fhir/r4/Appointment/'+a.id)).body.resourceType,'Appointment');
 console.log('PASS A20 FHIR R4 reads, capability statement, invalid/unsupported input and authentication');
+const openapi=await c.request('/api/openapi/v1.json');assert.equal(openapi.status,200);assert.ok(openapi.body.paths['/api/appointments']);
+console.log('PASS authenticated generated OpenAPI document');

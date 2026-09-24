@@ -4,8 +4,16 @@ Target: origin/main → git@github.com:sjjjlol/ClinicFlow.git. Per-slice commit/
 
 | Slice | Status | Evidence |
 |---|---|---|
-| M0 | Verified, ready to commit | 2026-09-23: SDK 10.0.401; MySQL 8.4.8 arm64; compose --wait healthy; initial migration and /api/health ready; dotnet build 0 warnings; npm build passed; npm audit 0 vulnerabilities |
-| M1–M8 | Pending | See spec/03-开发与Git交付.md |
+| M0 | Delivered | f0a64f2; remote CI passed |
+| M1 | Delivered | 17dcf41; remote CI passed |
+| M2 | Delivered | 097b42f; remote CI passed |
+| M3 | Delivered | df9bdbc; remote CI passed |
+| M4 | Delivered | b6f1547; remote CI passed |
+| M5 | Delivered | 99d8a70; remote CI passed |
+| M6 | Delivered | e0c7024; remote CI passed |
+| M7 | Delivered | dbeff8f; remote CI passed |
+| M8a | Verified, ready to commit | Packaging, migration/restore drill, learning docs, 23 .NET tests and 6 bundled-UI browser tests passed |
+| M8b | In progress | Clean clone and final expanded CI verification |
 
 UI decision: Apple-inspired light surface, restrained blue, rounded cards, Chinese labels and English domain terms. No clinical claims.
 
@@ -56,3 +64,12 @@ Evidence: FhirTests 4/4 passed (all three state mappings and Patient fields); HT
 2026-09-24 Asia/Shanghai (evidence timestamps use UTC). L1 normal and fixed runs deterministically produced [1,1]/last-write-wins versus [1,0]/version conflict. L2 response loss produced two side effects without deduplication versus one with it. L3 ran 100,000 generated rows, resource=42, offset=5, limit=50, five query samples per variant: median 9.576ms before and 0.999ms after; plan changes from 100,000-row table scan/sort to covering index range scan; ordered IDs identical. Hardware/runtime details and full plans retained in docs/evidence. No production benefit claims.
 
 L1/L3 use only clinicflow_labs; L2 uses temporary SQLite and a loopback server. Each rerun resets its own experiment. Task instructions and separate answer document added, plus RCA/English defect update and UI entry. Normal xUnit suite rerun after labs (22 tests) and frontend build passed. M6 e0c7024 pushed, remote CI succeeded. Next M8 migration/backup drill, packaging, learning materials and complete acceptance review.
+
+
+## M8a — Packaging, upgrades and learning delivery
+
+2026-09-24: multi-stage pinned container, same-origin bundled React UI, generated authenticated OpenAPI, request-header documentation, bounded pagination, readable C#/TypeScript formatting, keyboard dialog focus/Escape handling, desktop/mobile verification, architecture/Java reading guide/interview/independent task materials and acceptance map.
+
+Actual upgrade drill retained appointment identity and all six record counts, then restored an old-schema mysqldump backup. The first generated migration incorrectly dropped an FK-supporting index; it was corrected to retain the old index and add the new one. Full rerun and EF pending-model check passed (details in upgrade-checklist.md).
+
+Verification: locked .NET restore; 23/23 xUnit tests; receiver response-loss/restart contract; full HTTP suite including generated OpenAPI; actual Docker outage/recovery; 6/6 browser tests against http://127.0.0.1:5080 bundled container (including complete role lifecycle and mobile keyboard interaction). Docker image build and scripts/start.sh succeeded. Desktop and 390px mobile screenshots inspected. No public deployment. Expanded CI now includes browser/labs/upgrade verification and a portable artifact. M7 dbeff8f remote CI confirmed success. Next: clean checkout with fresh volumes and final CI result.

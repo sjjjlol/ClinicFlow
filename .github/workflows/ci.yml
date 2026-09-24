@@ -17,14 +17,41 @@ jobs:
       - run: npm ci && npm run build
         working-directory: frontend
       - run: ./scripts/configure.sh && docker compose up -d --build --wait
-      - run: ./scripts/test.sh
+      - run: dotnet restore tests --locked-mode
+      - run: ./scripts/test.sh --no-restore
       - run: node --test mock-external/receiver.test.mjs
       - run: |
           ./scripts/api.sh > /tmp/api.log 2>&1 &
           for i in $(seq 1 60); do curl -fsS http://127.0.0.1:5080/api/health && break || sleep 1; done
           ./scripts/http-tests.sh
+      - run: |
+          set -a
+          source .env
+          set +a
+          node tests/http-integration.mjs
+      - run: ./scripts/upgrade-drill.sh
+      - run: ./scripts/labs.sh L1 && ./scripts/labs.sh L1 --fixed && ./scripts/labs.sh L2 && ./scripts/labs.sh L2 --fixed && ./scripts/labs.sh L3 10000
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - run: |
+          set -a
+          source .env
+          set +a
+          npm --prefix frontend run dev > /tmp/ui.log 2>&1 &
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:5173 >/dev/null && break || sleep 1; done
+          npm --prefix frontend run test:e2e
+      - run: |
+          dotnet publish backend -c Release -o artifacts/app
+          cp -R frontend/dist artifacts/app/wwwroot
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clinicflow-portable
+          path: artifacts/app
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: diagnostics
-          path: /tmp/api.log
+          path: |
+            /tmp/api.log
+            /tmp/ui.log
+            frontend/test-results

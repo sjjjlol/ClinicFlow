@@ -7,7 +7,7 @@ services:
       MYSQL_DATABASE: clinicflow
       MYSQL_USER: clinicflow
       MYSQL_PASSWORD: ${DB_PASSWORD:?run scripts/configure.sh}
-    ports: ["127.0.0.1:3308:3306"]
+    ports: ["127.0.0.1:${DB_PORT:-3308}:3306"]
     volumes: ["mysql-data:/var/lib/mysql"]
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD"]
@@ -16,10 +16,28 @@ services:
       retries: 40
   mock:
     build: ./mock-external
-    ports: ["127.0.0.1:5090:5090"]
+    ports: ["127.0.0.1:${MOCK_PORT:-5090}:5090"]
     environment:
       INTEGRATION_TOKEN: ${INTEGRATION_TOKEN:?run scripts/configure.sh}
     volumes: ["external-data:/data"]
+  app:
+    profiles: [full]
+    build: .
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Clinic: Server=db;Database=clinicflow;User=clinicflow;Password=${DB_PASSWORD}
+      DEMO_PASSWORD: ${DEMO_PASSWORD}
+      INTEGRATION_TOKEN: ${INTEGRATION_TOKEN}
+      Integration__Url: http://mock:5090
+    ports: ["127.0.0.1:${APP_PORT:-5080}:8080"]
+    volumes: ["data-protection:/home/app/.aspnet/DataProtection-Keys"]
+    depends_on:
+      db:
+        condition: service_healthy
+      mock:
+        condition: service_started
 volumes:
+  data-protection:
   mysql-data:
   external-data:

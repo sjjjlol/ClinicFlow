@@ -4,6 +4,6 @@
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="MySqlConnector" Version="2.4.0" />
+    <ProjectReference Include="../../backend/ClinicFlow.csproj" />
   </ItemGroup>
 </Project>
