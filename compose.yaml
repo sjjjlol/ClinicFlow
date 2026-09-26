@@ -28,6 +28,25 @@ services:
     environment:
       INTEGRATION_TOKEN: ${INTEGRATION_TOKEN:?run scripts/configure.sh}   # 与 app 共享的集成令牌
     volumes: ["external-data:/data"]   # mock 的持久化：已收消息/receipt（重启后仍认幂等记录）
+  orthanc:
+    profiles: [imaging]
+    image: orthancteam/orthanc:26.7.0
+    environment:
+      DICOM_WEB_PLUGIN_ENABLED: "true"
+      STONE_WEB_VIEWER_PLUGIN_ENABLED: "true"
+      ORTHANC__DICOM_SERVER_ENABLED: "false"
+      ORTHANC__AUTHENTICATION_ENABLED: "true"
+      ORTHANC__REGISTERED_USERS: '{"clinicflow":"${INTEGRATION_TOKEN}"}'
+      ORTHANC__DICOM_WEB__STUDIES_METADATA: Full
+      ORTHANC__DICOM_WEB__SERIES_METADATA: Full
+      VERBOSE_STARTUP: "false"
+    ports: ["127.0.0.1:${ORTHANC_PORT:-8042}:8042"]
+    volumes: ["imaging-data:/var/lib/orthanc/db"]
+    healthcheck:
+      test: ["CMD", "python3", "/probes/test-aliveness.py"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
   app:
     profiles: [full]              # 档案：默认 compose up 不起本服务；--profile full 才构建启动
     build: .                      # 用根目录 Dockerfile 现场构建镜像
@@ -43,6 +62,8 @@ services:
       Agent__BaseUrl: ${Agent__BaseUrl:-https://api.moonshot.cn/v1}
       Agent__Model: ${Agent__Model:-kimi-k2.6}
       Agent__DemoEnabled: ${Agent__DemoEnabled:-false}
+      Imaging__BaseUrl: http://orthanc:8042/
+      Imaging__Password: ${INTEGRATION_TOKEN}
       Integration__Url: http://mock:5090    # Outbox 投递目标 = mock 服务名
     ports: ["127.0.0.1:${APP_PORT:-5080}:8080"]
     # Data Protection 密钥持久化：无此卷则每次重建容器密钥轮换 → 已发 Cookie 全部失效
@@ -54,6 +75,7 @@ services:
       mock:
         condition: service_started
 volumes:                            # 声明命名卷（Docker 管理的持久化目录）
+  imaging-data:
   data-protection:
   mysql-data:
   external-data:

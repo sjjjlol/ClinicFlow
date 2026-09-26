@@ -5,6 +5,8 @@ set -a
 source .env
 set +a
 export ConnectionStrings__Clinic="Server=127.0.0.1;Port=3308;Database=clinicflow;User=clinicflow;Password=$DB_PASSWORD"
+export Imaging__Password="${INTEGRATION_TOKEN}"
+export Imaging__BaseUrl="http://127.0.0.1:${ORTHANC_PORT:-8042}/"
 export ASPNETCORE_URLS=http://127.0.0.1:5080
 export ASPNETCORE_ENVIRONMENT=Development
 if [[ ! -d agent-runtime/node_modules ]]; then npm --prefix agent-runtime ci; fi
