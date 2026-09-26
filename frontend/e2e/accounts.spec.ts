@@ -1,4 +1,4 @@
-import { submitLogin } from "./support";
+import { submitLogin, submitRegistration } from "./support";
 import { test, expect } from "@playwright/test";
 
 test("registered account books only for itself, reschedules, cancels and signs in again", async ({
@@ -15,7 +15,7 @@ test("registered account books only for itself, reschedules, cancels and signs i
   await page.getByRole("button", { name: "注册并进入", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("两次输入的密码不一致");
   await page.getByLabel("确认密码", { exact: true }).fill(password);
-  await page.getByRole("button", { name: "注册并进入", exact: true }).click();
+  await submitRegistration(page);
   await expect(
     page.getByRole("heading", { name: "我的预约", exact: true }),
   ).toBeVisible();
