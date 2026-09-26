@@ -10,3 +10,6 @@ artifacts/
 *.user
 
 *.tsbuildinfo
+
+# Local IDE settings and data sources
+.idea/

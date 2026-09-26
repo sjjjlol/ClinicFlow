@@ -1,0 +1,38 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "backend", "backend", "{1AE8ACA6-933B-BF2A-3671-3E2EAC007D16}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ClinicFlow.Tests", "tests\ClinicFlow.Tests.csproj", "{2A949AEC-6E18-4FC2-9293-99C4DE7CDB6E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ClinicFlow", "backend\ClinicFlow.csproj", "{AE6E953B-8BAF-CD20-9D35-DA708631FC3D}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{2A949AEC-6E18-4FC2-9293-99C4DE7CDB6E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2A949AEC-6E18-4FC2-9293-99C4DE7CDB6E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2A949AEC-6E18-4FC2-9293-99C4DE7CDB6E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2A949AEC-6E18-4FC2-9293-99C4DE7CDB6E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AE6E953B-8BAF-CD20-9D35-DA708631FC3D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AE6E953B-8BAF-CD20-9D35-DA708631FC3D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AE6E953B-8BAF-CD20-9D35-DA708631FC3D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AE6E953B-8BAF-CD20-9D35-DA708631FC3D}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{2A949AEC-6E18-4FC2-9293-99C4DE7CDB6E} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{AE6E953B-8BAF-CD20-9D35-DA708631FC3D} = {1AE8ACA6-933B-BF2A-3671-3E2EAC007D16}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {0D0F123C-94BC-4B18-938E-3CF6FD2A4B76}
+	EndGlobalSection
+EndGlobal
