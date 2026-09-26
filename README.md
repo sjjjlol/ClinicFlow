@@ -2,13 +2,19 @@
 
 [![CI](https://github.com/sjjjlol/ClinicFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/sjjjlol/ClinicFlow/actions/workflows/ci.yml)
 
-A runnable scheduling study project for a Java developer learning C#/.NET. Built with AI assistance, with deterministic failure exercises with an implemented registration-to-completion appointment lifecycle. All patients and resources are fictional. This is not clinical software, an Elekta product, or a certified FHIR implementation.
+A runnable C#/.NET learning project built with AI assistance: appointment scheduling, reliable external synchronization, a streaming appointment assistant, and pre-visit imaging integration. All patients and images are fictional. This is not clinical software, an Elekta product, or a certified FHIR/DICOM implementation.
 
-The Chinese UI uses an Apple-inspired visual style: quiet surfaces, clear typography, rounded panels and restrained blue accents.
+## 从这里开始
 
-## Run with Docker / 中文一键启动
+- **第一次使用**：[运行与验证](docs/runbook.md) → [账号与预约流程](docs/accounts-and-lifecycle.md)。
+- **不知道该读什么**：[文档导读地图](docs/README.md)按常见问题连接说明、代码和测试。
+- **判断是否完成**：[当前状态与验收](docs/acceptance.md#current-status)区分本次复核、历史验证和未覆盖能力。
+- **查表结构**：[数据库设计与数据字典](docs/database-design.md)，包含13张业务表、索引和AI持久化边界。
+- **准备面试**：[统一演示与面试材料](docs/demo-and-interview.md)。
 
-Prerequisites: Docker with Compose, Bash, curl and OpenSSL. No local .NET or Node installation is required for this path.
+## 中文快速启动
+
+需要 Docker Compose、Bash、curl、OpenSSL。首次构建需要网络，无须在本机安装 .NET 或 Node。
 
 ```sh
 git clone git@github.com:sjjjlol/ClinicFlow.git
@@ -16,95 +22,27 @@ cd ClinicFlow
 ./scripts/start.sh
 ```
 
-Open **http://localhost:5080**. The first build downloads pinned images and can take several minutes. The script generates a local, ignored `.env`, starts MySQL and the mock receiver, applies EF migrations, seeds fictional catalog data, and serves the built React UI from ASP.NET Core.
+打开 **http://localhost:5080**。脚本生成本地忽略的 `.env`，启动基础服务、应用迁移并创建虚构种子数据。登录页可注册个人预约账号；工作人员账号为 `scheduler`、`taskoperator`、`admin`，密码读取本机 `.env` 的 `DEMO_PASSWORD`。Admin 不继承预约及影像权限。
 
-Use **注册预约账号** on the login page to create a personal account. Registered users see **我的预约**, can book only for themselves, and can reschedule/cancel before the appointment starts. Staff verify prerequisites and confirm appointments; after the scheduled end, Scheduler records **Completed**. See [account and lifecycle guide](docs/accounts-and-lifecycle.md).
+停止并保留数据：`docker compose --profile full down`。本机调试、端口、重置、测试与升级入口统一见[运行手册](docs/runbook.md)。
 
-Demo usernames: `scheduler`, `taskoperator`, `admin`. Read **DEMO_PASSWORD** from your local `.env` and use it for all three accounts. Passwords are hashed on first seed; editing `.env` does not rotate existing database password hashes. Demo roles have different permissions; Admin does not inherit scheduling/task privileges.
+## 已实现的功能
 
-停止：`docker compose --profile full down`（保留数据）。重置：`docker compose --profile full down -v`（删除本项目数据库、外部去重和会话密钥卷；仅用于清除虚构演示数据）。不要在本地API占用5080时启动容器API。
+| 功能 | 核心行为 | 详细说明 |
+|---|---|---|
+| 预约闭环 | 注册、本人预约、前置核对、确认、改期、取消、结束后登记完成 | [账号与生命周期](docs/accounts-and-lifecycle.md) |
+| 一致性 | 连续15分钟时段、资源有序锁、唯一约束、Version、请求幂等、事务审计 | [架构](docs/architecture.md) / [API](docs/api.md) |
+| 外部同步 | Outbox、短事务租约、受控重试、持久接收去重及版本防倒退 | [架构](docs/architecture.md) |
+| 预约助手 | Pi Agent Core + Kimi，流式文字、查询进度、最多三个候选、显式确认后写入 | [Agent 指南](docs/appointment-agent.md) |
+| 医疗接口 | FHIR R4 Patient/Appointment 限定只读接口 | [FHIR 范围](docs/fhir-r4.md) |
+| 就诊前影像 | Orthanc DICOMweb 查询/获取、患者核验、关系审计、复用 Stone 显示 | [影像手册](docs/imaging/README.md) |
 
-Ports are loopback-only: UI/API 5080, MySQL 3308, receiver 5090. Override APP_PORT/DB_PORT/MOCK_PORT for an isolated second Compose project. Compose intentionally uses Development cookies on localhost HTTP; public hosting would require HTTPS, production configuration and operational work outside this demo.
+技术基线：.NET SDK 10.0.401、ASP.NET 10.0.12、EF Core 9.0.20、Pomelo 9.0.0、MySQL 8.4.8、Node 24.13.1、React 19.2.0、TypeScript 5.9.3、Vite 7.3.6。实际依赖以项目文件和锁文件为准；[版本选择理由](docs/adr/001-platform.md)。
 
-## Local debugging
+## 完成度与边界
 
-Pinned baseline: .NET SDK **10.0.401**, ASP.NET runtime/OpenAPI **10.0.12**, EF Core **9.0.20**, Pomelo **9.0.0**, MySQL **8.4.8**, Node **24.13.1**, React **19.2.0**, TypeScript **5.9.3**, Vite **7.3.6**. Lockfiles are committed. [Version rationale](docs/adr/001-platform.md).
+约定的学习演示功能已有实现及本地验证证据。本次文档整理复跑后端 **80/80**、Pi **3/3**、接收端 **1/1**，前端构建通过；历史影像阶段记录浏览器 **14/14**，本次未重跑。最新扩展的远程 CI 未在本次核验，徽章不能替代对应提交的验收结论。
 
-```sh
-./scripts/configure.sh
-docker compose up -d --build --wait  # infrastructure only; app is in the full profile
-npm --prefix agent-runtime ci
-./scripts/dotnet.sh tool restore
-./scripts/api.sh
-# another terminal
-cd frontend && npm ci && npm run dev
-```
+未覆盖真实医院/设备接入、临床计算、完整标准符合性、密码找回/SSO、多节点运行、大规模压测、自动保留清理及完整影像灾备。所有性能数字均是限定环境实验结果。生产化需求和证据边界见[验收记录](docs/acceptance.md)。
 
-Open http://127.0.0.1:5173. Vite proxies `/api` and `/fhir` to the local API. `scripts/dotnet.sh` uses a global SDK if installed, otherwise `~/.local/share/clinicflow-dotnet/dotnet`. Install the pinned SDK through Microsoft's .NET download if neither exists. Use one local API process; restart it after backend edits.
-
-## Workflow and guarantees
-
-Scheduler creates a Pending appointment and immediately reserves consecutive 15-minute slots. TaskOperator completes two prerequisites; Scheduler confirms, reschedules, cancels or records completion after the appointment ends. Completed and Cancelled are terminal states. Reschedule resets tasks. Slot uniqueness, stable resource lock ordering, version checks, idempotent commands, audit and Outbox are covered by real MySQL tests.
-
-The background worker uses short claim/completion transactions and HTTP outside transactions. A persistent receiver deduplicates MessageId and rejects older snapshot versions. Admin can inspect attempts and retry failed messages. This is at-least-once delivery with receiver deduplication.
-
-## Kimi appointment agent / 预约协调助手
-
-Scheduler and registered users can ask for an appointment in natural language, inspect up to three candidate cards, and explicitly confirm creation. The runtime uses Pi Agent Core with real streaming text and tool progress. Registered users are restricted to their own profile. Real slot conflicts trigger a new search under the same constraints and require fresh confirmation. The existing scheduling transaction remains authoritative. Configure backend-only `KIMI_API_KEY` and `Agent__Model` in local `.env`; without a key, the ordinary booking form still works.
-
-See [setup, architecture, evaluation and demonstration guide](docs/appointment-agent.md). The optional conflict simulator is available only in Development with `Agent__DemoEnabled=true`.
-
-## Verification
-
-```sh
-npm --prefix agent-runtime ci && npm --prefix agent-runtime test
-./scripts/test.sh                              # isolated clinicflow_tests database
-./scripts/http-tests.sh                        # running local API; loads .env itself
-node --test mock-external/receiver.test.mjs     # isolated receiver restart/lost-response test
-./scripts/upgrade-drill.sh                     # isolated upgrade + actual backup restoration
-./scripts/labs.sh L1                           # explicit faulty lab
-./scripts/labs.sh L2
-./scripts/labs.sh L3 100000
-```
-
-Browser tests require Node plus a running UI/API. Export `.env` locally without printing secrets:
-
-```sh
-set -a; source .env; set +a
-cd frontend
-npx playwright install chromium
-npm run test:e2e
-# optional: PW_CHANNEL=chrome npm run test:e2e (installed Chrome)
-# BASE_URL=http://127.0.0.1:5080 tests the bundled container UI
-```
-
-With `.env` exported, `node tests/http-integration.mjs` briefly stops/restarts the mock container and verifies real outage recovery. `docker compose stop mock` / `docker compose start mock` also demonstrate it manually. After five failures, Admin must retry. Fault-control HTTP endpoints are disabled in normal Compose.
-
-CI independently starts the container from fresh volumes, restores locked dependencies, builds, runs MySQL/HTTP/receiver/browser tests, exercises labs and upgrades, then publishes a portable ASP.NET + React + Pi runtime artifact (requires Node 24.13.1 on the target host). Dockerfile provides repeatable container packaging; there is no automatic public deployment. [Acceptance evidence](docs/acceptance.md) and [development history](docs/development-progress.md) distinguish actual execution from pending checks.
-
-## Reading route / 学习入口
-
-- [Java开发者七天阅读路线](docs/java-reading-guide.md)
-- [架构、ER与事务时序](docs/architecture.md) · [API与错误码](docs/api.md)
-- [ADR目录](docs/adr/) · [FHIR R4范围](docs/fhir-r4.md)
-- [隔离故障实验](labs/README.md) · [RCA与英文缺陷更新](docs/rca.md)
-- [升级与备份恢复记录](docs/upgrade-checklist.md)
-- [演示脚本与面试材料](docs/demo-and-interview.md)
-- [Completed实现与验证入口](docs/independent-task.md)
-- [原始规格](SPEC.md)
-
-After login, generated OpenAPI is available at `/api/openapi/v1.json`.
-
-Limits: no real hospital integration, dosage calculation, treatment planning, device control, password recovery/SSO, message broker or full FHIR conformance. No automatic retention/cleanup for audit, idempotency or receipts. The mock's built-in Node SQLite API is experimental in the pinned runtime. Lab timings are reproducible laptop observations, not production gains. Database startup migrations and seeded accounts are for single-instance local demonstration.
-
-
-## DICOMweb imaging extension
-
-Staff can associate existing studies with an appointment, inspect series/instances, download DICOM files and open a reused Stone viewer. ClinicFlow enforces patient identity, role access and association checks; Orthanc provides the archive. All imaging fixtures are synthetic.
-
-```bash
-./scripts/imaging-up.sh
-docker compose --profile full --profile imaging up -d --build --wait app
-```
-
-Start learning from the [影像模块学习入口](docs/imaging/README.md), then [DICOM入门与两周路线](docs/imaging/learning-guide.md), [设计与代码导读](docs/imaging/design.md), [运行与排障](docs/imaging/operations.md), [面试材料](docs/imaging/interview.md) and [实际验证记录](docs/imaging/verification.md). This extension is locally committed in stages; no remote CI success is implied.
+历史需求保留于 [SPEC](SPEC.md)；按需阅读，无须先读完所有规格再运行项目。

@@ -82,6 +82,10 @@ sequenceDiagram
 SQL Server对照：可用UPDLOCK/HOLDLOCK等锁策略及唯一索引，但不能原样复制MySQL FOR UPDATE/SKIP LOCKED；SQL Server rowversion也不等于业务Version。双数据库运行未列入本项目实现。详细取舍见adr/001–005；未来扩大吞吐可将资源父锁细化，但必须重新验证所有改期和锁顺序。
 
 
+## 数据库字段与存储边界
+
+完整的13张业务表、字段类型、可空性、主外键、索引、迁移顺序，以及AI会话/接收端/影像归档的存储边界统一见[数据库表设计与数据字典](database-design.md)。上方ER图仅展示预约主线，完整关系图以该文档为准。
+
 ## 影像集成边界
 
 Imaging 模块通过独立身份映射把预约患者与外部影像患者对应起来，关联表保存 Study UID。影像像素不进入业务 MySQL。关联与审计原子保存；解除只修改本地关系，不删除外部影像，也不改变预约 Version/Outbox。查看器的静态资源和影像请求都经过受限应用代理与身份重验证。完整调用图、失败语义和局限见 [影像设计](imaging/design.md)。

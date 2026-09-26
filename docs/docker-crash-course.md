@@ -173,107 +173,39 @@ volumes:
 
 ## 5. ClinicFlow 项目 Docker 全解析
 
-### 5.1 根 `Dockerfile`：三阶段构建（前端 → 后端 → 运行时）
+### 5.1 `Dockerfile`：四个构建阶段
 
-```dockerfile
-# ---- 阶段1：前端构建 ----
-FROM node:24.13.1-alpine AS frontend      # 钉死版本的 Node 构建环境，阶段取名 frontend
-WORKDIR /src/frontend
-COPY frontend/package*.json ./            # 先只拷依赖清单 → package-lock 不变则下一层命中缓存
-RUN npm ci                                # 严格按 lock 文件安装（≈ 可复现构建，不用 npm install）
-COPY frontend/ ./                         # 再拷源码（改源码只重建此层之后的层）
-RUN npm run build                         # 产出静态文件到 dist/
+以仓库根目录 [Dockerfile](../Dockerfile) 为准，避免在教程中复制一份逐渐过时的完整配置。
 
-# ---- 阶段2：后端发布 ----
-FROM mcr.microsoft.com/dotnet/sdk:10.0.401 AS backend   # 含完整 .NET SDK 的编译镜像
-WORKDIR /src
-COPY global.json Directory.Build.props ./ # 构建配置文件先行（钉 SDK 版本、开 lock 还原）
-COPY backend/ backend/
-RUN dotnet restore backend --locked-mode  # --locked-mode：严格按 packages.lock.json 还原（≈ npm ci）
-RUN dotnet publish backend -c Release --no-restore -o /out  # 发布为生产 DLL（≈ mvn package）
-COPY --from=frontend /src/frontend/dist/ /out/wwwroot/  # 前端产物塞进 ASP.NET 静态目录
+| 阶段 | 输入与职责 | 输出去向 |
+|---|---|---|
+| frontend | Node 24.13.1 Alpine，npm ci 后构建 React/Vite | dist 复制进 ASP.NET 的 wwwroot |
+| agent-runtime | Node 24.13.1 Debian，安装 Pi 运行依赖并复制 worker/runtime | Node 二进制、私有运行时及依赖复制进最终镜像 |
+| backend | .NET SDK 10.0.401，锁定还原与 Release publish | 发布 DLL 与前端静态资源 |
+| 最终运行阶段 | ASP.NET 10.0.12，复制后端及 Agent 产物 | 非 root 用户 app 启动 ClinicFlow.dll |
 
-# ---- 阶段3：最终运行时镜像（真正部署的只有这个）----
-FROM mcr.microsoft.com/dotnet/aspnet:10.0.12  # 仅 ASP.NET 运行时，无 SDK → 镜像小、攻击面小
-WORKDIR /app
-# Data Protection（ASP.NET 的 Cookie 加密体系）需要可写的密钥目录；
-# chown 给内置非 root 用户 app（官方运行时镜像自带）。
-RUN mkdir -p /home/app/.aspnet/DataProtection-Keys && chown -R app:app /home/app/.aspnet
-COPY --from=backend /out/ ./              # 只拿发布产物，源码/SDK/Node 全部不进最终镜像
-USER app                                  # 非 root 运行（生产安全基线）
-EXPOSE 8080
-ENTRYPOINT ["dotnet", "ClinicFlow.dll"]   # exec 数组形式：dotnet 进程是 PID 1，能收到停机信号
-```
+最终镜像包含 Node，因为 Pi 通过私有子进程执行；它不需要 .NET SDK 或前端开发工具链。这个 Node 子进程不单独暴露公开端口。不要将早期三阶段示意误读为当前镜像没有 Node。
 
-**为什么是这个结构**：
+前端产物由 ASP.NET 的静态文件与 fallback 路由提供，一个 app 容器同时服务页面和 API。Data Protection 密钥目录由 app 用户写入，并通过卷持久化。COPY 清单先于源码、npm ci 和 locked restore 的目的，是依赖缓存与可复现构建。
 
-- 镜像里**没有**源码、Node、SDK——最终镜像只含 ASP.NET 运行时 + 编译产物（几百 MB 的 SDK 镜像不进交付物）。
-- `USER app` + 密钥目录 chown：以非 root 跑，且 ASP.NET Data Protection 有地方落密钥文件。
-- 前端 build 产物拷进 `wwwroot`：`Program.cs` 的 `UseStaticFiles()`/`MapFallbackToFile("index.html")` 直接托管它——**一个容器同时服务 API 和前端**。
+### 5.2 `compose.yaml`：基础服务与可选 profile
 
-### 5.2 `compose.yaml`：三个服务 + 一个隐藏档案
+实际环境变量、健康检查和卷定义见 [compose.yaml](../compose.yaml)。
 
-```yaml
-name: clinicflow
-services:
-  db:                              # MySQL 8.4.8（钉版本）
-    image: mysql:8.4.8
-    environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?run scripts/configure.sh}  # :? 未配置即报错，引导跑配置脚本
-      MYSQL_DATABASE: clinicflow   # 首次启动自动建库建用户
-      MYSQL_USER: clinicflow
-      MYSQL_PASSWORD: ${DB_PASSWORD:?run scripts/configure.sh}
-    ports: ["127.0.0.1:${DB_PORT:-3308}:3306"]  # 只绑回环地址：本机可连，局域网不可达（MySQL 不暴露给邻居）
-    volumes: ["mysql-data:/var/lib/mysql"]      # 数据持久化：容器删了数据还在
-    healthcheck:                  # 真·就绪探测：用应用账号真连一次 TCP
-      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_PASSWORD mysql --protocol=TCP -h127.0.0.1 -uclinicflow -Dclinicflow -e 'SELECT 1'"]
-      interval: 3s
-      retries: 40                 # 3s × 40 ≈ 2 分钟容忍 MySQL 首次初始化
-      # $$ 转义：Compose 里 $ 是变量展开，$$ 才是给 shell 的单个 $
-  mock:                            # 模拟外部集成方（Node 小服务，Dockerfile 在 mock-external/）
-    build: ./mock-external
-    ports: ["127.0.0.1:${MOCK_PORT:-5090}:5090"]
-    environment:
-      INTEGRATION_TOKEN: ${INTEGRATION_TOKEN:?run scripts/configure.sh}
-    volumes: ["external-data:/data"]   # mock 的持久化（收到的消息/receipt）
-  app:
-    profiles: [full]               # 关键设计：默认 compose up 只起 db+mock（本地 dotnet run 开发）；
-                                   # --profile full 才把 app 也容器化（验证完整交付）
-    build: .                       # 用根 Dockerfile 现场构建
-    environment:
-      ASPNETCORE_ENVIRONMENT: Development
-      ASPNETCORE_URLS: http://+:8080          # 容器内监听 8080（对照 Dockerfile EXPOSE）
-      # 注意 Server=db：Compose 网络内用服务名互访，不是 localhost！
-      # __ 双下划线 = .NET 配置的嵌套键（ConnectionStrings:Clinic）
-      ConnectionStrings__Clinic: Server=db;Database=clinicflow;User=clinicflow;Password=${DB_PASSWORD}
-      DEMO_PASSWORD: ${DEMO_PASSWORD}         # 首次种子账号密码（见 Identity.Seed）
-      INTEGRATION_TOKEN: ${INTEGRATION_TOKEN} # 与 mock 共享的集成令牌
-      Integration__Url: http://mock:5090      # Outbox 投递目标 = mock 服务名
-    ports: ["127.0.0.1:${APP_PORT:-5080}:8080"]
-    volumes: ["data-protection:/home/app/.aspnet/DataProtection-Keys"]  # Cookie 加密密钥持久化：
-    # 没有这个卷，每次重建容器密钥就变 → 所有已发 Cookie 失效（用户被强制登出）
-    depends_on:
-      db:
-        condition: service_healthy   # 等 MySQL 真正可连再起 app（配合启动时 MigrateAsync）
-      mock:
-        condition: service_started
-volumes:
-  data-protection:
-  mysql-data:
-  external-data:
-```
+| 服务 | 启动方式 | 数据与网络职责 |
+|---|---|---|
+| db | 默认启动 | MySQL，mysql-data 卷；默认宿主回环 3308；通过 TCP 应用账号查询判定就绪 |
+| mock | 默认启动 | 独立 Node 接收端，external-data 卷持久保存去重和快照；默认回环 5090 |
+| app | full profile | ASP.NET + React + Pi 子进程；默认回环 5080；data-protection 卷保存会话密钥 |
+| orthanc | imaging profile | 影像归档与 Stone 插件，imaging-data 卷；回环 8042，服务端 Basic 认证 |
 
-**启动流程**（`scripts/start.sh`）：
+容器内用服务名互访，例如数据库 `db`、外部接收方 `mock`、影像服务 `orthanc`；`localhost` 在容器里指容器自身。`ConnectionStrings__Clinic` 的双下划线映射 .NET 嵌套配置；Compose 的 `$$` 用于把字面 `$` 留给容器 shell。
 
-```bash
-./scripts/configure.sh                            # 首次生成 .env（随机密钥，umask 077 权限收紧）
-docker compose --profile full up -d --build --wait  # 构建并起全套，--wait 等健康检查通过
-# 然后轮询 /api/health 直到 ready
-```
+- **日常开发**：默认启动 db/mock 后，使用 `scripts/api.sh` 和 Vite；后端修改需重新启动或另外配置 watch，普通 dotnet run 不会自动重载。
+- **完整应用**：`scripts/start.sh` 启动 full profile，并检查 API 健康状态。
+- **影像演示**：按[影像手册](imaging/README.md#operations)启动、导入 fixture，再构建启用影像配置的 app。
 
-两种工作模式：
-- **日常开发**：`docker compose up -d`（无 profile）→ 只起 db + mock；app 用 `dotnet run` 本机跑，改代码即时生效。
-- **交付验证**：`--profile full` → app 也走容器，验证 Dockerfile 真的能独立构建运行（`docs/evidence/clean-start.md` 的"干净启动"证据就是这么来的）。
+密码变量只负责配置输入；数据库首次种子密码和已持久化账号不会因修改 `.env` 自动轮换。停机保留卷与删除卷是两种不同操作，具体命令查[运行手册](runbook.md)。
 
 ### 5.3 `.dockerignore`
 

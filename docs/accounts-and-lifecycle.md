@@ -31,6 +31,14 @@ Booker在预约开始前可改期或取消。改期后返回Pending并重置前�
 
 RegisteredAccounts迁移只给Users增加可空PatientId、唯一索引和外键。原有三种角色、Patient、预约和密码保持不变。部署顺序为更新模拟接收端支持Completed，再更新应用；启动时应用迁移。不要用down -v升级，否则会删除数据。建议升级前保留数据库备份。
 
-本次验证：`./scripts/test.sh`，`./scripts/http-tests.sh`（包括http-accounts.mjs），`node --test mock-external/receiver.test.mjs`，`./scripts/upgrade-drill.sh`，`npm --prefix frontend run test:e2e`。
+验证命令（实际执行日期及结果见[验收记录](acceptance.md)）：`./scripts/test.sh`，`./scripts/http-tests.sh`（包括http-accounts.mjs），`node --test mock-external/receiver.test.mjs`，`./scripts/upgrade-drill.sh`，`npm --prefix frontend run test:e2e`。
 
 HTTP和浏览器测试会创建虚构账号与预约，应在测试数据库运行；后端测试自动使用独立的clinicflow_tests数据库。注册每IP每分钟5次、登录30次，连续多轮测试时需等待限流窗口结束。
+
+## Completed 实现与代码入口
+
+Scheduler仅可将已到结束时间的Confirmed预约登记为Completed。完成释放SlotClaims，保留预约、任务、审计和Outbox；状态不可撤销。重复相同幂等键返回原成功结果，不重复产生副作用。FHIR映射为fulfilled，模拟接收端支持Completed并继续按版本防止乱序回退。
+
+代码入口：SchedulingService.Mutate的complete分支、Endpoints的schedule策略、Scheduling.tsx的登记完成按钮、FhirAdapter映射、mock-external/server.mjs的状态校验。
+
+验证入口：AccountLifecycleTests（合法前置状态、结束时间边界、旧版本冲突、重放、终态限制、失败回滚及并发）；http-accounts.mjs（真实角色权限与完整闭环）；accounts.spec.ts（浏览器角色协作与终态按钮）；receiver.test.mjs（Completed持久化、重放与乱序）。

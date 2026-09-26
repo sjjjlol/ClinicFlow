@@ -144,4 +144,4 @@ SSE事件：progress、session、message_start、delta、trace、result、error�
 
 参考：[Pi官方Agent Core](https://github.com/earendil-works/pi/tree/main/packages/agent)、[Kimi官方流式工具调用注意事项](https://www.kimi.com/help/kimi-api/api-troubleshooting)。
 
-当前版本本地验证：后端66项、Pi运行时3项、浏览器13项和完整HTTP回归通过。真实Kimi个人账号流式联调收到61个文字增量，并通过本人归属、显式确认、重复确认仅创建一次的检查。完整证据与限制见[验收记录](acceptance.md)。
+2026-09-26 个人 Agent 阶段历史验证：后端66项、Pi运行时3项、浏览器13项和完整HTTP回归通过。当前累计数量与最近复核范围见[验收状态](acceptance.md#current-status)。真实Kimi个人账号流式联调收到61个文字增量，并通过本人归属、显式确认、重复确认仅创建一次的检查。完整证据与限制见[验收记录](acceptance.md)。

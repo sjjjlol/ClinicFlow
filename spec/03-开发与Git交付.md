@@ -30,7 +30,7 @@ M0建立CI，后续随功能增加测试；M2起产生Outbox记录，M5实现发
 
 1. 实现该切片，补相应测试、设计说明和Java对照。
 2. 运行影响范围内的检查，记录实际命令及结果。检查diff，只暂存本功能文件。
-3. 更新docs/development-progress.md：功能、验收ID、检查结果、已知问题、下一步。
+3. 更新docs/acceptance.md#history：功能、验收ID、检查结果、已知问题、下一步。
 4. 创建可读提交，例如`feat(scheduling): add atomic multi-slot booking`；实验使用`feat(labs): ...`，文档使用`docs: ...`。
 5. 普通push到已经确认的远程与目标分支，验证远程分支包含本次提交。禁用force push、自动merge和未经要求的发布/tag流程。
 6. 向用户报告功能、测试、commit短SHA、分支和push结果。若可查询GitHub Actions，核验该提交的结果；无法核验则明确“本地通过，远程CI待确认”。

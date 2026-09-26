@@ -2,7 +2,7 @@
 
 > 面向有 Java 后端经验（Spring Boot / JPA / Maven）的开发者。
 > 以 ClinicFlow 项目为实例，覆盖 C# 语法、ASP.NET Core、EF Core 的核心知识点。
-> 配套阅读：`docs/java-reading-guide.md`（代码阅读路线）、`docs/architecture.md`（架构决策）。
+> 先看本文末尾[代码阅读路线](#reading-route)，架构与事务图见[架构文档](architecture.md)。
 
 ---
 
@@ -23,7 +23,7 @@
 | Java 世界 | .NET 世界 | 本项目实例 |
 |---|---|---|
 | Maven `pom.xml` / Gradle | `*.csproj`（SDK 风格 XML） | `backend/ClinicFlow.csproj` |
-| 多模块 `parent pom` | `*.sln` 解决方案（可含多个 csproj） | `ClinicFlow .sln` |
+| 多模块工程 | `*.sln` 可组织多个 csproj；运行脚本直接指定项目目录 | `backend/`、`tests/` |
 | Maven Central 依赖 | NuGet 包（`<PackageReference>`） | Pomelo.EntityFrameworkCore.MySql |
 | `mvn compile` | `dotnet build` | |
 | `mvn spring-boot:run` | `dotnet run` | |
@@ -36,9 +36,9 @@
 **命令速查：**
 
 ```bash
-dotnet build                # 编译（= mvn compile）
+./scripts/dotnet.sh build backend # 编译后端
 dotnet run --project backend # 运行（= mvn spring-boot:run）
-dotnet test                 # 跑测试（= mvn test）
+./scripts/test.sh           # 使用隔离 MySQL 测试库
 dotnet ef migrations add X  # 生成数据库迁移（≈ Flyway/Liquibase 手写 SQL 的自动化版）
 dotnet ef database update   # 应用迁移
 dotnet restore              # 还原 NuGet 依赖（首次拉代码后）
@@ -59,7 +59,7 @@ dotnet restore              # 还原 NuGet 依赖（首次拉代码后）
 Java 要写 `getName()/setName()`；C# 把"字段 + 访问器"合成属性：
 
 ```csharp
-// backend/ClinicDb.cs — Patient 实体
+// 属性语法示意，非完整 Patient 实体
 public class Patient
 {
     public int Id { get; set; }            // 自动属性：编译器生成隐藏字段 + get/set
@@ -79,7 +79,7 @@ public class Patient
 public record Booking(int PatientId, int ResourceId, DateTimeOffset StartUtc, DateTimeOffset EndUtc);
 ```
 
-这一行 = 不可变类 + 4 个只读属性 + 构造器 + `Equals/GetHashCode`（按值比较）+ `ToString`。和 Java record 几乎一样。
+该位置 record 生成带 init 访问器的属性、构造器、值相等比较和 ToString。它提供浅层不可变用法；record 本身不保证引用成员深层不可变。
 
 **`with` 表达式**（Java 没有）：基于原对象生成"改了几字段"的副本：
 
@@ -136,6 +136,7 @@ var status = a.Status switch
     "Pending" => "pending",
     "Confirmed" => "booked",
     "Cancelled" => "cancelled",
+    "Completed" => "fulfilled",
     _ => throw new ArgumentException("..."),   // _ = default 分支
 };
 
@@ -156,9 +157,9 @@ var items = await q.OrderByDescending(x => x.StartUtc).Skip(...).Take(s).ToListA
 
 关键区别（对比 Java Stream）：
 
-- `IEnumerable<T>`：内存集合的 LINQ（≈ Stream），立即逐条求值。
+- `IEnumerable<T>`：对象序列的 LINQ（≈ Stream）；Where/Select 通常延迟到枚举时求值。
 - `IQueryable<T>`：查询被构建成**表达式树**交给 provider（EF Core）翻译成 SQL。`Where/OrderBy` 只是拼表达式，`ToListAsync/CountAsync/SingleAsync` 才是执行边界。
-- 因此可以在 `if` 里条件拼接 `Where`——这在 Java Stream 里很难做到（Stream 不可复用、不可分步拼接）。
+- 可以按条件拼接查询；Java Stream 也可逐步构建流水线，但不负责把任意谓词翻译为数据库 SQL。
 - `slots.Contains(x.SlotStartUtc)`（`CheckFree` 中）会被翻译成 SQL `IN (...)`。
 
 ### 2.8 匿名类型与字符串内插
@@ -168,7 +169,7 @@ new { code = ex.Code, message = ex.Message, correlationId = ctx.TraceIdentifier 
 // 匿名类型：编译器生成只读类，常用于 JSON 响应。≈ 一次性 Map.of(...) 但有静态类型。
 
 $"SELECT * FROM Appointments WHERE Id={id} FOR UPDATE"
-// $"" 字符串内插（≈ Java STR."..." 模板）。配合 FromSqlInterpolated 时参数会被自动参数化防注入。
+// $"" 字符串内插（可类比 Java 字符串格式化）。配合 FromSqlInterpolated 时参数会被自动参数化防注入。
 ```
 
 ### 2.9 using / await using —— try-with-resources 对应物
@@ -241,7 +242,7 @@ builder.Services.AddHttpClient<Dispatcher>(...);                        // HttpC
 
 **铁律（本项目就有体现）**：Scoped 的 `DbContext` 不能被 Singleton/后台服务长期持有。后台 `OutboxWorker` 每轮 `CreateAsyncScope()` 取一个新的 `Dispatcher`（其内部持有 Scoped `ClinicDb`），用完即释放——对照 Spring 里在异步线程里用 `ObjectProvider`/新建 scope。
 
-注入方式只有一种：构造器注入。不需要注解，容器按构造器参数类型自动解析。
+本项目服务类主要采用构造器注入；Minimal API 也通过端点参数获取服务。不需要注解，容器按构造器参数类型自动解析。
 
 ### 3.3 Minimal API（对照 Spring MVC）
 
@@ -251,7 +252,7 @@ builder.Services.AddHttpClient<Dispatcher>(...);                        // HttpC
 group.MapPost("/appointments",
     async (Booking input, SchedulingService service, HttpContext ctx, CancellationToken ct) =>
         await service.Create(input, ...))
-    .RequireAuthorization("schedule");
+    .RequireAuthorization("booking");
 ```
 
 参数来源按类型/名字自动绑定：
@@ -440,7 +441,7 @@ public async Task<Appointment> Create(...)   // Task<T> = 异步结果的句柄�
 
 ## 6. ClinicFlow 项目导读
 
-> 细读路线见 `docs/java-reading-guide.md`；这里按"知识点 → 文件"索引，帮你带着语法问题找到实例。
+> 细读路线见本文[七天阅读路线](#reading-route)；这里按"知识点 → 文件"索引，帮你带着语法问题找到实例。
 
 | 想学的点 | 文件 | 看什么 |
 |---|---|---|
@@ -501,3 +502,60 @@ _ = int.TryParse("5", out var v);     // out 参数内联声明；_ 丢弃
 nameof(Appointment.Id)                // 编译期取名字符串
 $"id={id}, when={DateTime.UtcNow:O}"  // 内插 + 格式
 ```
+
+<a id="reading-route"></a>
+
+## Java开发者的代码阅读路线
+
+从一次创建预约开始，先运行再读，不必从所有实体逐行读起。
+
+1. `frontend/src/Scheduling.tsx`：submit把上海本地时间转成带Z的UTC，保留重试用Idempotency-Key；`api.ts`负责Cookie同源请求与CSRF。观察409资源/版本/幂等错误的不同提示。浏览器按钮权限只是体验，服务端仍校验。
+2. `backend/Program.cs`：看DI注册和中间件顺序。认证建立ClaimsPrincipal，授权检查角色，随后校验CSRF，再进入端点。DbContext是Scoped，不能让后台单例长期持有它。和Spring Security过滤器链可以对照，但ASP.NET endpoint metadata与运行管道的顺序要单独理解。
+3. `backend/Scheduling/Endpoints.cs`：参数绑定、CancellationToken、端点策略。返回对象交给JSON序列化，BusinessException由统一错误映射处理。可空`int?`表示可能不存在；`!`是编译器空分析断言，不是运行时判空。读出业务输入record与数据库可变class的区别。
+4. `SchedulingService.Create/Execute`：找到事务的开始、flush和commit。C#的`await using`调用异步Dispose，即使异常也释放事务/连接。相比@Transactional，本项目显式编排事务；中途SaveChanges不等于提交事务。异常离开作用域会回滚。
+5. `ClinicDb.OnModelCreating`与Migrations：LINQ查询被翻译为SQL，AsNoTracking避免读操作加入变更跟踪；状态变更实体被跟踪后SaveChanges生成UPDATE。EF跟踪不防止业务并发，数据库行锁和Version检查各有职责。一个DbContext不可并发执行两个await查询。
+6. `SchedulingService.Mutate`：预读不是锁；资源按序锁、再锁预约、再验证资源与版本。部分重叠改期为什么先flush删除再插入？故障测试after-release验证该中间状态没有泄漏为成功。
+7. `Integration/Dispatcher.cs`：HostedService是生命周期管理的异步循环，每次CreateAsyncScope取得Scoped依赖。async/await释放等待中的线程，不表示另开线程，也不需要为IO套Task.Run。CancellationToken沿调用链传递；应用停止时留下租约恢复，不猜测HTTP是否已生效。
+8. `mock-external/server.mjs`：外部不是同一事务的一部分。理解唯一receipt与版本条件更新为何必须一起提交，再运行响应丢失和乱序测试。
+
+### 语言与运行时重点
+
+- `record Booking/Mutation`使用值语义；`with`生成修改后的副本，用于UTC规范化。持久实体是可变class，不要机械将JPA模型全翻成record。
+- 集合表达式`[1,2]`、LINQ Select/Where、lambda和Java Stream相似，但IQueryable表达式树由provider翻译；ToListAsync是执行边界。客户端集合和数据库查询不是同一种求值环境。
+- nullable引用分析是编译期工具；外部JSON、数据库和反序列化仍需要运行时校验。DateTimeOffset用于入站偏移，持久化UTC DateTime，再由UtcDateTimeConverter明确输出Z。
+- `Task<T>`是异步操作结果；`TaskCompletionSource`在测试中作为受控屏障。不要用Thread.Sleep制造“看起来同时”，也不要把本项目async测试当压测。
+- DI注册Singleton/Scoped/Transient与Spring的生命周期概念有相似性，但线程安全和请求作用域并不自动保证。TimeProvider singleton可以替换；DbContext scoped必须随工作单元释放。
+- 配置从环境变量读取，`ConnectionStrings__Clinic`映射嵌套键。日志只包含关联ID和错误类别，不记录密码、Cookie或集成密钥。
+- 测试组合：xUnit纯规则与真实MySQL事务、Node HTTP契约、Playwright完整业务流程。InMemory provider不用于证明锁和回滚。
+
+### 七天安排（每天3–4小时）
+
+| 天 | 任务 | 自己提交的学习证据 |
+|---|---|---|
+| D1 | 一键启动、使用页面、读Program与实体 | 画创建请求调用链，解释三个C#特性 |
+| D2 | 读身份/端点/LINQ/迁移 | 修改一个查询条件，解释生成SQL和权限 |
+| D3 | 创建/改期/幂等与L1 | 画双客户端锁时间线，说明冲突与回滚 |
+| D4 | HostedService/Outbox与L2 | 演示断网和响应丢失，解释结果未知 |
+| D5 | 测试/RCA/L3 | 写一份带执行计划证据的故障分析 |
+| D6 | 复盘已实现Completed；自主提出一条规则扩展 | 先说明需求，再亲手修改并补失败路径测试 |
+| D7 | 升级演练/FHIR/英文说明 | 3分钟演示、90秒介绍与代码追问 |
+
+五天版本可合并D1/D2与D6/D7，不能跳过亲手修改。遇到问题先用`docs/acceptance.md`找对应测试，再回到业务不变量。
+
+
+## 工程文件补充速查
+
+| 文件/概念 | 与 Java 的联系及本项目用法 |
+|---|---|
+| `.csproj` | 类似 pom.xml，声明目标框架和 NuGet 依赖；后端、测试分别构建 |
+| `Directory.Build.props` | 类似父 POM，集中配置 Nullable、ImplicitUsings 等编译选项 |
+| `global.json` | 固定 SDK；依赖版本另由 csproj 和锁文件控制 |
+| `packages.lock.json` | 记录依赖解析结果；CI 使用锁定还原，不能把示例版本当当前版本 |
+| `dotnet-tools.json` | 固定本项目 dotnet 工具；由脚本恢复 |
+| `DesignFactory.cs` | EF 命令行设计时创建 DbContext 的入口 |
+| `ApiDocumentation.cs` | 生成 OpenAPI 并补充契约头；登录后读取 `/api/openapi/v1.json` |
+| `UtcDateTimeConverter.cs` | 类比 Jackson 转换器，确保持久化 UTC 对外输出明确 Z |
+| `.cs` / namespace | 文件名与类名不由语言强制绑定；一个文件可含多个相关类型 |
+| `Dockerfile` / `compose.yaml` | 构建镜像与编排服务；浏览器前端由 app 同源提供，开发时才单独运行 Vite |
+
+C# 属性、record、可空类型和 LINQ 查前文；事务、后台作用域和异步语义查第 3–5 章。原逐文件 Java 对照中的重复代码片段已合并到这些章节。
