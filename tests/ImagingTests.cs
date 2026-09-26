@@ -193,9 +193,28 @@ public class ImagingTests : IAsyncLifetime
 
 public class DicomWebTests
 {
+    [Fact]
+    public async Task SearchReportsUpstreamTruncationEvenWhenSomeIdentitiesAreFiltered()
+    {
+        var correct = JsonSerializer.Deserialize<JsonElement[]>(ImagingTests.Metadata())![0];
+        var wrong = JsonSerializer.Deserialize<JsonElement[]>(
+            ImagingTests.Metadata(issuer: "OtherHospital")
+        )![0];
+        var body = JsonSerializer.Serialize(Enumerable.Repeat(wrong, 100).Append(correct));
+        var result = await ImagingTests
+            .Client(body)
+            .Search(
+                new ImagingIdentity { ExternalPatientId = "CF-IMG-001", Issuer = "ClinicFlowDemo" },
+                default
+            );
+        Assert.True(result.Truncated);
+        Assert.Empty(result.Items);
+    }
+
     [Theory]
     [InlineData("../system")]
     [InlineData("1.02.3")]
+    [InlineData("1.2\n")]
     [InlineData("")]
     [InlineData("1.2?patient=other")]
     public void InvalidUidsAreRejected(string uid) =>

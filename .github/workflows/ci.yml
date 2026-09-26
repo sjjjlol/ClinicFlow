@@ -19,6 +19,7 @@ jobs:
       - run: npm ci && npm run build
         working-directory: frontend
       - run: ./scripts/configure.sh && docker compose up -d --build --wait
+      - run: ./scripts/imaging-up.sh
       - run: dotnet restore tests --locked-mode
       - run: ./scripts/test.sh --no-restore
       - run: node --test mock-external/receiver.test.mjs
@@ -31,6 +32,8 @@ jobs:
           source .env
           set +a
           node tests/http-integration.mjs
+          node tests/http-imaging.mjs
+          node tests/http-imaging-outage.mjs
       - run: ./scripts/upgrade-drill.sh
       - run: ./scripts/labs.sh L1 && ./scripts/labs.sh L1 --fixed && ./scripts/labs.sh L2 && ./scripts/labs.sh L2 --fixed && ./scripts/labs.sh L3 10000
       - run: npx playwright install --with-deps chromium

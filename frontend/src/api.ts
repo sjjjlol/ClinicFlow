@@ -37,7 +37,9 @@ async function checkResponse(res: Response, url: string) {
     throw new ApiError(
       res.status,
       err.code ?? "request_failed",
-      err.message ??
+      (err.message
+        ? `${err.message}${err.correlationId ? `（请求标识：${err.correlationId}）` : ""}`
+        : undefined) ??
         {
           401: "请先登录",
           403: "当前角色没有此操作权限",

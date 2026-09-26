@@ -41,7 +41,23 @@ public static class ImagingEndpoints
             {
                 context.HttpContext.Response.Headers.CacheControl = "no-store";
                 context.HttpContext.Response.Headers["Referrer-Policy"] = "no-referrer";
-                return await next(context);
+                try
+                {
+                    return await next(context);
+                }
+                catch (BusinessException ex)
+                {
+                    context
+                        .HttpContext.RequestServices.GetRequiredService<ILoggerFactory>()
+                        .CreateLogger("ClinicFlow.Imaging")
+                        .LogWarning(
+                            "Imaging request rejected {Code} {Status} {CorrelationId}",
+                            ex.Code,
+                            ex.Status,
+                            context.HttpContext.TraceIdentifier
+                        );
+                    throw;
+                }
             }
         );
         group.MapGet(
@@ -83,8 +99,8 @@ public static class ImagingEndpoints
                 CancellationToken ct
             ) =>
             {
-                var items = await dicom.Search(await service.Identity(appointmentId, ct), ct);
-                return Results.Ok(new { items = items.Take(100), truncated = items.Length > 100 });
+                var result = await dicom.Search(await service.Identity(appointmentId, ct), ct);
+                return Results.Ok(new { items = result.Items, truncated = result.Truncated });
             }
         );
         group.MapPost(
@@ -268,18 +284,44 @@ public static class ImagingEndpoints
                     var pattern =
                         @"^studies/"
                         + Regex.Escape(uid)
-                        + @"(?:/metadata|/series(?:/[0-9.]+(?:/metadata|/instances(?:/[0-9.]+(?:/metadata|/frames/[0-9,]+(?:/rendered)?)?)?)?)?)?/?$";
+                        + @"(?:/metadata|/series(?:/[0-9.]+(?:/metadata|/rendered|/instances(?:/[0-9.]+(?:/metadata|/frames/[0-9,]+(?:/rendered)?)?)?)?)?)?/?$";
                     string upstream;
-                    if (resource.TrimEnd('/') == "studies")
+                    if (resource.TrimEnd('/') is "studies" or "series" or "instances")
                     {
-                        if (ctx.Request.Query["StudyInstanceUID"] != uid)
+                        if (
+                            (
+                                ctx.Request.Query["StudyInstanceUID"].ToString() != uid
+                                && ctx.Request.Query["0020000D"].ToString() != uid
+                            )
+                            || (
+                                ctx.Request.Query.ContainsKey("StudyInstanceUID")
+                                && ctx.Request.Query["StudyInstanceUID"] != uid
+                            )
+                            || (
+                                ctx.Request.Query.ContainsKey("0020000D")
+                                && ctx.Request.Query["0020000D"] != uid
+                            )
+                        )
                             throw new BusinessException(
                                 "imaging_scope",
                                 "查看器仅可访问当前关联的检查",
                                 403
                             );
                         upstream =
-                            "dicom-web/studies?StudyInstanceUID=" + uid + "&includefield=all";
+                            resource.TrimEnd('/') == "studies"
+                                ? "dicom-web/studies?StudyInstanceUID="
+                                    + uid
+                                    + "&includefield=00081030"
+                                : "dicom-web/series?StudyInstanceUID="
+                                    + uid
+                                    + "&includefield=0008103E&includefield=00200011";
+                        if (resource.TrimEnd('/') == "instances")
+                        {
+                            var seriesUid = ctx.Request.Query["0020000E"].ToString();
+                            DicomWebClient.ValidateUid(seriesUid);
+                            upstream =
+                                $"dicom-web/studies/{uid}/series/{seriesUid}/instances?includefield=00080016";
+                        }
                     }
                     else
                     {

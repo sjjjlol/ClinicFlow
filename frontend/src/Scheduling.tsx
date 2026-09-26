@@ -1,3 +1,4 @@
+import ImagingPanel from "./ImagingPanel";
 import AppointmentAssistant from "./AppointmentAssistant";
 import { useDialogFocus } from "./useDialogFocus";
 import { useEffect, useState, type FormEvent } from "react";
@@ -583,6 +584,12 @@ export default function Scheduling({
                   )}
               </div>
             ))}
+            {(user.role === "Scheduler" || user.role === "TaskOperator") && (
+              <ImagingPanel
+                key={detail.appointment.id}
+                appointmentId={detail.appointment.id}
+              />
+            )}
             <h3>
               外部同步 <small>External sync</small>
             </h3>

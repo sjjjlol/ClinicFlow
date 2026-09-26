@@ -40,6 +40,16 @@ response=await fetch(base+studyRoot+'/dicom-web/studies/'+wrong.studyInstanceUid
 assert.equal(response.status,403);
 response=await fetch(base+studyRoot+'/dicom-web/studies?StudyInstanceUID='+wrong.studyInstanceUid,{headers:{Cookie:cookie}});
 assert.equal(response.status,403);
+for (const resource of ['studies','series','instances']) {
+  response=await fetch(base+studyRoot+'/dicom-web/'+resource+'?0020000D='+wrong.studyInstanceUid+'&0020000E='+first.seriesInstanceUid,{headers:{Cookie:cookie}});
+  assert.equal(response.status,403);
+}
+response=await fetch(base+studyRoot+'/dicom-web/series?0020000D='+first.studyInstanceUid,{headers:{Cookie:cookie}});
+assert.equal(response.status,200);
+assert.equal((await response.json()).length,2);
+response=await fetch(base+studyRoot+'/dicom-web/instances?0020000D='+first.studyInstanceUid+'&0020000E='+first.seriesInstanceUid,{headers:{Cookie:cookie}});
+assert.equal(response.status,200);
+assert.equal((await response.json()).length,3);
 assert.equal((await booker.request(studyRoot+'/viewer/configuration.json')).status,403);
 assert.equal((await booker.request(studyRoot+'/metadata')).status,403);
 const operator=await new Client().login('taskoperator');

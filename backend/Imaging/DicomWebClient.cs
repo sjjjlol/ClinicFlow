@@ -15,7 +15,7 @@ public class DicomWebClient(HttpClient http, ILogger<DicomWebClient> logger)
         if (
             string.IsNullOrEmpty(uid)
             || uid.Length > 64
-            || !Regex.IsMatch(uid, @"^(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))+$")
+            || !Regex.IsMatch(uid, @"^(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))+\z")
         )
             throw new BusinessException("invalid_uid", "影像 UID 格式不正确", 400);
     }
@@ -41,8 +41,12 @@ public class DicomWebClient(HttpClient http, ILogger<DicomWebClient> logger)
         var (bytes, _) = await Get(path, "application/dicom+json", ct);
         try
         {
-            return System.Text.Json.JsonSerializer.Deserialize<JsonElement[]>(bytes)
+            var items =
+                System.Text.Json.JsonSerializer.Deserialize<JsonElement[]>(bytes)
                 ?? throw new JsonException();
+            if (items.Any(x => x.ValueKind != JsonValueKind.Object))
+                throw new JsonException();
+            return items;
         }
         catch (JsonException)
         {
@@ -54,7 +58,10 @@ public class DicomWebClient(HttpClient http, ILogger<DicomWebClient> logger)
         }
     }
 
-    public async Task<StudySummary[]> Search(ImagingIdentity identity, CancellationToken ct)
+    public async Task<(StudySummary[] Items, bool Truncated)> Search(
+        ImagingIdentity identity,
+        CancellationToken ct
+    )
     {
         var items = await Json(
             "dicom-web/studies?PatientID="
@@ -63,7 +70,8 @@ public class DicomWebClient(HttpClient http, ILogger<DicomWebClient> logger)
             ct
         );
         // QIDO is a search, not an authorization decision: verify returned identifiers too.
-        return items
+        var matched = items
+            .Take(100)
             .Where(x => Matches(x, identity))
             .Select(x => new StudySummary(
                 Value(x, "0020000D"),
@@ -72,6 +80,7 @@ public class DicomWebClient(HttpClient http, ILogger<DicomWebClient> logger)
                 Value(x, "00080061")
             ))
             .ToArray();
+        return (matched, items.Length > 100);
     }
 
     public async Task<JsonElement[]> Verify(
@@ -143,7 +152,7 @@ public class DicomWebClient(HttpClient http, ILogger<DicomWebClient> logger)
             );
         }
         catch (Exception ex)
-            when (ex is HttpRequestException
+            when (ex is HttpRequestException or IOException
                 || ex is OperationCanceledException && !ct.IsCancellationRequested
             )
         {
