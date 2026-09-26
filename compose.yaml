@@ -39,6 +39,10 @@ services:
       ConnectionStrings__Clinic: Server=db;Database=clinicflow;User=clinicflow;Password=${DB_PASSWORD}
       DEMO_PASSWORD: ${DEMO_PASSWORD}       # 首次启动种子账号密码（Identity.Seed 用）
       INTEGRATION_TOKEN: ${INTEGRATION_TOKEN}
+      KIMI_API_KEY: ${KIMI_API_KEY:-}
+      Agent__BaseUrl: ${Agent__BaseUrl:-https://api.moonshot.cn/v1}
+      Agent__Model: ${Agent__Model:-kimi-k2.6}
+      Agent__DemoEnabled: ${Agent__DemoEnabled:-false}
       Integration__Url: http://mock:5090    # Outbox 投递目标 = mock 服务名
     ports: ["127.0.0.1:${APP_PORT:-5080}:8080"]
     # Data Protection 密钥持久化：无此卷则每次重建容器密钥轮换 → 已发 Cookie 全部失效

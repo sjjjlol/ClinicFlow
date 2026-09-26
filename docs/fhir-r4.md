@@ -10,9 +10,9 @@
 | GET /fhir/r4/Patient/{id} | resourceType/id/active/identifier/name.text；内部虚构患者编号 |
 | GET /fhir/r4/Appointment/{uuid} | id/meta.versionId/meta.lastUpdated/status/start/end/minutesDuration/description/participant；ETag和Last-Modified |
 
-返回 application/fhir+json。Pending→pending、Confirmed→booked、Cancelled→cancelled。两个participant分别是Patient相对引用与资源的Location逻辑identifier，后者不是一个可读取的Location端点。participant.status只是模拟排程确认映射，不能解释为患者真实同意。start/end成对输出UTC instant，原预约取消后仍保留其历史时间。仅存在于本练习中的internal Version映射成FHIR meta.versionId字符串；不提供版本历史。
+返回 application/fhir+json。Pending→pending、Confirmed→booked、Cancelled→cancelled、Completed→fulfilled。Completed参与者映射为accepted。2026-09-26再次核验[官方R4状态定义](https://hl7.org/fhir/R4/codesystem-appointmentstatus.html)：fulfilled表示预约规划阶段结束；本项目仅做预约级映射，不建立Encounter，也不代表临床治疗完成。两个participant分别是Patient相对引用与资源的Location逻辑identifier，后者不是一个可读取的Location端点。participant.status只是模拟排程确认映射，不能解释为患者真实同意。start/end成对输出UTC instant，原预约取消后仍保留其历史时间。仅存在于本练习中的internal Version映射成FHIR meta.versionId字符串；不提供版本历史。
 
-登录Cookie与普通API共享。无效标识400、资源不存在404、不支持交互405、不支持查询400、只要求XML时406；这些适配器错误返回OperationOutcome。认证失败仍由统一中间件返回401/403，不声称完整FHIR错误协商。
+登录Cookie与普通API共享。Booker只能读取自己的Patient和Appointment；他人的ID返回404/OperationOutcome，不能通过FHIR绕过普通API的数据范围。无效标识400、资源不存在404、不支持交互405、不支持查询400、只要求XML时406；这些适配器错误返回OperationOutcome。认证失败仍由统一中间件返回401/403，不声称完整FHIR错误协商。
 
 不支持写入、搜索、Bundle、事务、历史、条件读/更新、XML、profile验证、术语服务、SMART-on-FHIR或临床字段。读取练习不接收FHIR资源写入；无效输入验收以标识、查询和不支持方法为范围。自定义 `/messages` 的messageId/version/snapshot不是FHIR协议。
 

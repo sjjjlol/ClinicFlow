@@ -31,11 +31,17 @@ namespace ClinicFlow.Migrations
                         .IsRequired()
                         .HasColumnType("longtext");
 
+                    b.Property<int?>("PatientId")
+                        .HasColumnType("int");
+
                     b.Property<string>("Role")
                         .IsRequired()
                         .HasColumnType("longtext");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("PatientId")
+                        .IsUnique();
 
                     b.ToTable("Users");
                 });
@@ -179,9 +185,9 @@ namespace ClinicFlow.Migrations
 
                     b.HasIndex("PatientId");
 
-                    b.HasIndex("StartUtc", "Id");
-
                     b.HasIndex("ResourceId");
+
+                    b.HasIndex("StartUtc", "Id");
 
                     b.HasIndex("ResourceId", "StartUtc", "Id");
 
@@ -348,6 +354,16 @@ namespace ClinicFlow.Migrations
                     b.HasIndex("AppointmentId");
 
                     b.ToTable("SlotClaims");
+                });
+
+            modelBuilder.Entity("ClinicFlow.DemoUser", b =>
+                {
+                    b.HasOne("ClinicFlow.Patient", "Patient")
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Patient");
                 });
 
             modelBuilder.Entity("ClinicFlow.Scheduling.Appointment", b =>

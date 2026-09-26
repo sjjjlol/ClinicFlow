@@ -19,6 +19,13 @@ test('A14/A15 durable dedupe, response loss and out-of-order snapshots',async()=
   await stop();await start();assert.equal((await (await request('/messages',message('first',1,'Pending'))).json()).duplicate,true);
   await request('/messages',message('new',3,'Cancelled'));await request('/messages',message('late',2,'Confirmed'));
   const state=await (await request('/state')).json();assert.equal(state.receipts.length,3);assert.equal(state.snapshots.length,1);assert.equal(state.snapshots[0].version,3);assert.equal(JSON.parse(state.snapshots[0].payload).status,'Cancelled');
+  assert.equal((await request('/messages',message('completed',4,'Completed'))).status,200);
+  await request('/messages',message('older-confirmed',2,'Confirmed'));
+  await stop();await start();
+  assert.equal((await (await request('/messages',message('completed',4,'Completed'))).json()).duplicate,true);
+  const completed=await (await request('/state')).json();
+  assert.equal(JSON.parse(completed.snapshots[0].payload).status,'Completed');
+  assert.equal(completed.snapshots[0].version,4);
   assert.equal((await request('/messages',{foo:'bar'})).status,400);
  }finally{if(child?.exitCode===null)await stop();await rm(dir,{recursive:true,force:true});}
 });

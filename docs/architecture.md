@@ -14,10 +14,11 @@ flowchart LR
   Mock --> External[(SQLite receipts + snapshots)]
 ```
 
-边界：Identity.cs管理演示身份；Scheduling目录表达预约及事务；AuditEntry以同一事务追加；Integration目录管理外部投递；Fhir目录映射只读协议。ClinicDb统一映射与迁移是本单体的共享基础设施。外部HTTP用HttpClient、时间用TimeProvider、故障屏障用ITransactionProbe替换；正常运行只注册NoTransactionProbe。
+边界：Identity.cs管理注册账号、个人档案绑定与演示身份；Scheduling目录表达预约及事务；AuditEntry以同一事务追加；Integration目录管理外部投递；Fhir目录映射只读协议。ClinicDb统一映射与迁移是本单体的共享基础设施。外部HTTP用HttpClient、时间用TimeProvider、故障屏障用ITransactionProbe替换；正常运行只注册NoTransactionProbe。
 
 ```mermaid
 erDiagram
+  Patient |o--o| User : binds
   Patient ||--o{ Appointment : identifies
   Resource ||--o{ Appointment : schedules
   Appointment ||--o{ SlotClaim : occupies
@@ -78,4 +79,4 @@ sequenceDiagram
   W->>D: 短事务验证token与租约期限，保存结果/退避
 ```
 
-SQL Server对照：可用UPDLOCK/HOLDLOCK等锁策略及唯一索引，但不能原样复制MySQL FOR UPDATE/SKIP LOCKED；SQL Server rowversion也不等于业务Version。双数据库运行未列入本项目实现。详细取舍见adr/001–004；未来扩大吞吐可将资源父锁细化，但必须重新验证所有改期和锁顺序。
+SQL Server对照：可用UPDLOCK/HOLDLOCK等锁策略及唯一索引，但不能原样复制MySQL FOR UPDATE/SKIP LOCKED；SQL Server rowversion也不等于业务Version。双数据库运行未列入本项目实现。详细取舍见adr/001–005；未来扩大吞吐可将资源父锁细化，但必须重新验证所有改期和锁顺序。

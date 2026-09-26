@@ -38,6 +38,7 @@ public static class FhirAdapter
                 "Pending" => "pending",
                 "Confirmed" => "booked",
                 "Cancelled" => "cancelled",
+                "Completed" => "fulfilled",
                 _ => throw new ArgumentException("Unsupported domain status"),
             },
             start = DateTime.SpecifyKind(a.StartUtc, DateTimeKind.Utc),
@@ -50,7 +51,7 @@ public static class FhirAdapter
                 {
                     actor = new { reference = "Patient/" + a.PatientId },
                     // 嵌套三元表达式排版：一行一个分支，读作 if/else if/else。
-                    status = a.Status == "Confirmed" ? "accepted"
+                    status = a.Status is "Confirmed" or "Completed" ? "accepted"
                     : a.Status == "Cancelled" ? "declined"
                     : "needs-action",
                 },
@@ -66,7 +67,7 @@ public static class FhirAdapter
                         },
                         display = resourceName,
                     },
-                    status = a.Status == "Confirmed" ? "accepted"
+                    status = a.Status is "Confirmed" or "Completed" ? "accepted"
                     : a.Status == "Cancelled" ? "declined"
                     : "needs-action",
                 },
@@ -167,6 +168,7 @@ public static class FhirAdapter
                     return Outcome(400, "invalid", "Patient id must be a positive catalog id.");
                 var p = await db
                     .Patients.AsNoTracking()
+                    .VisibleTo(ctx.User)
                     .SingleOrDefaultAsync(x => x.Id == number, ct);
                 return p is null
                     ? Outcome(404, "not-found", "Patient not found.")
@@ -189,6 +191,7 @@ public static class FhirAdapter
                     );
                 var a = await db
                     .Appointments.AsNoTracking()
+                    .VisibleTo(ctx.User)
                     .SingleOrDefaultAsync(x => x.Id == id, ct);
                 if (a is null)
                     return Outcome(404, "not-found", "Appointment not found.");

@@ -15,6 +15,13 @@ COPY frontend/ ./
 # Vite 构建，产物到 dist/
 RUN npm run build
 
+# Pi Agent Core is a private child process, not a separately exposed service.
+FROM node:24.13.1-bookworm-slim AS agent-runtime
+WORKDIR /agent-runtime
+COPY agent-runtime/package*.json ./
+RUN npm ci --omit=dev
+COPY agent-runtime/worker.mjs agent-runtime/runtime.mjs ./
+
 # ---- 阶段2：后端发布（.NET SDK 编译镜像）----
 FROM mcr.microsoft.com/dotnet/sdk:10.0.401 AS backend
 WORKDIR /src
@@ -38,6 +45,9 @@ WORKDIR /app
 RUN mkdir -p /home/app/.aspnet/DataProtection-Keys && chown -R app:app /home/app/.aspnet
 # 只拿发布产物：源码、SDK、Node 全部不进最终镜像
 COPY --from=backend /out/ ./
+COPY --from=agent-runtime /usr/local/bin/node /usr/local/bin/node
+COPY --from=agent-runtime /agent-runtime/ ./agent-runtime/
+RUN node --version
 # 非 root 运行（生产安全基线）
 USER app
 # 声明监听端口（文档作用；真正映射靠 compose 的 ports）

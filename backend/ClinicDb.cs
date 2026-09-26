@@ -26,6 +26,12 @@ public class ClinicDb(DbContextOptions<ClinicDb> options) : DbContext(options)
     // 但用链式代码表达，重构友好、可条件化）。override = Java 的 @Override（C# 必须显式写）。
     protected override void OnModelCreating(ModelBuilder b)
     {
+        b.Entity<DemoUser>()
+            .HasOne(x => x.Patient)
+            .WithMany()
+            .HasForeignKey(x => x.PatientId)
+            .OnDelete(DeleteBehavior.Restrict);
+        b.Entity<DemoUser>().HasIndex(x => x.PatientId).IsUnique();
         // Property(...).HasMaxLength(36) ≈ @Column(length = 36)
         b.Entity<SyncAttempt>().Property(x => x.MessageId).HasMaxLength(36);
         b.Entity<SyncAttempt>().Property(x => x.LeaseToken).HasMaxLength(36);
@@ -137,4 +143,6 @@ public class DemoUser
     public string Id { get; set; } = "";
     public string Role { get; set; } = "";
     public string PasswordHash { get; set; } = "";
+    public int? PatientId { get; set; }
+    public Patient? Patient { get; set; }
 }

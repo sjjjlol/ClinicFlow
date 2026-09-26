@@ -1,9 +1,9 @@
-# 用户独立任务：预约完成 Completed
+# Completed：已实现的业务闭环
 
-初版没有实现Completed。该需求由你自行设计、编码、测试和提交；这里不提供完整答案。
+此功能原为独立练习，现根据继续开发请求实现。规则与账号权限见[账号及预约闭环](accounts-and-lifecycle.md)。
 
-先回答：哪些状态允许完成？哪个角色有权限？完成时占用立即释放还是保留到原结束时间？能否撤销？列表、资源查询、审计、Outbox与FHIR如何表达？与取消在语义上有什么不同？已有客户端或外部服务遇到新状态怎么办？
+Scheduler仅可将已到结束时间的Confirmed预约登记为Completed。完成释放SlotClaims，保留预约、任务、审计和Outbox；状态不可撤销。重复相同幂等键返回原成功结果，不重复产生副作用。FHIR映射为fulfilled，模拟接收端支持Completed并继续按版本防止乱序回退。
 
-代码入口：Scheduling/Models.cs的状态字段；SchedulingService.Mutate的状态变更；Endpoints.cs的权限；Scheduling.tsx的操作按钮；Dispatcher与模拟接收端快照契约；FhirAdapter状态映射；SchedulingTests与Playwright流程。
+代码入口：SchedulingService.Mutate的complete分支、Endpoints的schedule策略、Scheduling.tsx的登记完成按钮、FhirAdapter映射、mock-external/server.mjs的状态校验。
 
-验收骨架（由你补期望，不给实现）：合法前置状态成功；非法前置状态失败；旧版本冲突；权限绕过失败；同Key重放一致；多时段占用符合你记录的规则；业务/审计/Outbox原子提交；外部乱序仍不倒退；页面状态可解释。给新规则一个需求ID，记录ADR和独立commit，最后接受代码追问。
+验证入口：AccountLifecycleTests（合法前置状态、结束时间边界、旧版本冲突、重放、终态限制、失败回滚及并发）；http-accounts.mjs（真实角色权限与完整闭环）；accounts.spec.ts（浏览器角色协作与终态按钮）；receiver.test.mjs（Completed持久化、重放与乱序）。

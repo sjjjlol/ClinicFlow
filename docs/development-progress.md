@@ -80,3 +80,16 @@ Verification: locked .NET restore; 23/23 xUnit tests; receiver response-loss/res
 Fresh clone testing found a MySQL initialization readiness race. The socket ping was replaced by a TCP application-user query; disposable volumes were removed and the complete start command passed from empty volumes. All HTTP checks and 6 browser workflows passed on the clean container, and the added sync-failure/network-retry UI test passed separately. A new loopback HTTP proxy test proves an actual API response disconnect after success still replays one business effect. CI now repeats fresh-volume container startup in its own job. Details: docs/evidence/clean-start.md.
 
 A01–A23 have executable evidence in docs/acceptance.md. M8a e80c473 is pushed and its full CI succeeded (run 35961883622), including a portable artifact. Final readiness/test/doc changes are verified locally and ready for commit; the live README CI badge and GitHub run for the final commit carry its remote outcome. The user-created `ClinicFlow .sln` is preserved, unmodified and uncommitted. Completed remains the user's independent exercise.
+
+
+## 2026-09-26 — Personal accounts and appointment completion
+
+At the user's request, the former independent Completed exercise is now implemented. Self-service registration creates a Booker account and bound patient atomically; list/detail/FHIR ownership checks limit registered users to their own appointments. Staff still verify prerequisites and confirm, and can record Completed after the scheduled end. Completion releases claims and uses the existing transaction/version/idempotency/audit/Outbox path. The mock accepts Completed, FHIR maps it to fulfilled, and the UI provides registration, personal login, 我的预约, completion and terminal-state controls.
+
+Local verification: 59 backend tests, full HTTP suite on an isolated database, 11 Chrome browser tests, receiver persistence/reordering test, frontend and Docker builds, migration/model consistency, and upgrade/actual backup restoration all passed. Added tests and updated API, ownership and lifecycle documentation. No remote CI result is claimed for these changes.
+
+## 2026-09-26 — Personal Pi Agent and streaming
+
+Registered users now have the appointment assistant in 我的预约. Pi Agent Core 0.87.1 owns the conversation/tool loop through a private Node worker; .NET retains model credentials, scoped availability, explicit booking confirmation and transaction boundaries. Both message and confirmation routes support incremental SSE text, progress, traces and final results. Interrupted streams never expose partial candidate cards.
+
+Local verification: 66 backend tests, 3 real Pi runtime tests, the full HTTP suite and 13 Chrome browser tests passed. A genuine Kimi run on the isolated database produced 61 text chunks (first text 6,134 ms, complete proposal 7,289 ms), queried only the account's profile, created only after confirmation and replayed the same appointment on repeated confirmation. The test appointment was cancelled afterward. These timings describe one run, not a performance guarantee. Frontend, publish and Docker builds passed. Updated localhost:5080, checked database readiness, staff authentication, Pi/streaming configuration and loading Pi inside the deployed container. Stopped the isolated 5088 process. No remote CI run or public deployment was performed.

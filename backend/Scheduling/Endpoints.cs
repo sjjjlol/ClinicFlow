@@ -25,20 +25,39 @@ public static class Endpoints
                     HttpContext ctx,
                     CancellationToken ct
                 ) =>
-                    await service.Create(
+                {
+                    var scope = ctx.User.PatientScope();
+                    if (scope is not null && input.PatientId != scope)
+                        throw new BusinessException(
+                            "patient_forbidden",
+                            "只能为自己的档案预约",
+                            403
+                        );
+                    return await service.Create(
                         input,
                         // ctx.User ≈ SecurityContextHolder 里的 Authentication；
                         // FindFirstValue 是扩展方法，取指定 claim；! 空断言（已通过认证，必有值）。
                         ctx.User.FindFirstValue(ClaimTypes.NameIdentifier)!,
                         ctx.Request.Headers["Idempotency-Key"].ToString(),
                         ctx.TraceIdentifier,
-                        ct
-                    )
+                        ct,
+                        selfService: scope is not null
+                    );
+                }
             )
             // 端点级授权策略：引用 Program.cs 里注册的命名策略（≈ 方法级 @PreAuthorize）。
-            .RequireAuthorization("schedule");
-        // 用循环注册 4 个同构端点：C# lambda 闭包特性——
-        foreach (var operation in new[] { "reschedule", "cancel", "confirm", "complete-task" })
+            .RequireAuthorization("booking");
+        // 用循环注册 5 个同构端点：C# lambda 闭包特性——
+        foreach (
+            var operation in new[]
+            {
+                "reschedule",
+                "cancel",
+                "confirm",
+                "complete-task",
+                "complete",
+            }
+        )
         {
             // foreach 迭代变量每轮是新实例，但显式拷贝一份更清晰（老式 for 循环闭包陷阱的防御写法）。
             var action = operation;
@@ -59,11 +78,16 @@ public static class Endpoints
                             ctx.User.FindFirstValue(ClaimTypes.NameIdentifier)!,
                             ctx.Request.Headers["Idempotency-Key"].ToString(),
                             ctx.TraceIdentifier,
-                            ct
+                            ct,
+                            patientScope: ctx.User.PatientScope()
                         )
                 )
-                // 三元表达式 ?: 与 Java 相同；complete-task 走 tasks 策略，其余走 schedule。
-                .RequireAuthorization(action == "complete-task" ? "tasks" : "schedule");
+                // 三元表达式 ?: 与 Java 相同；complete-task 走 tasks，创建/改期/取消允许 booking，确认/完成仅 schedule。
+                .RequireAuthorization(
+                    action == "complete-task" ? "tasks"
+                    : action is "cancel" or "reschedule" ? "booking"
+                    : "schedule"
+                );
         }
         group.MapGet(
             "/appointments",
@@ -74,6 +98,7 @@ public static class Endpoints
                 int? size,
                 string? status,
                 int? resourceId,
+                HttpContext ctx,
                 CancellationToken ct
             ) =>
             {
@@ -81,7 +106,7 @@ public static class Endpoints
                 var p = Math.Clamp(page ?? 1, 1, 100000);
                 var s = Math.Clamp(size ?? 20, 1, 100);
                 // AsQueryable()：拿到 IQueryable<T> 后可以分步拼接条件（延迟执行，Java Stream 做不到）。
-                var q = db.Appointments.AsNoTracking().AsQueryable();
+                var q = db.Appointments.AsNoTracking().VisibleTo(ctx.User);
                 if (status is not null) // is not null：模式匹配判空（≈ status != null，但可组合更复杂模式）
                     q = q.Where(x => x.Status == status); // Where ≈ stream.filter，但翻译成 SQL WHERE
                 if (resourceId is not null)
@@ -103,11 +128,12 @@ public static class Endpoints
         );
         group.MapGet(
             "/appointments/{id}",
-            async (string id, ClinicDb db, CancellationToken ct) =>
+            async (string id, ClinicDb db, HttpContext ctx, CancellationToken ct) =>
             {
                 // SingleOrDefaultAsync：0 或 1 条返回实体/null，多于 1 条抛异常（≈ JPA getSingleResult 的宽容版）。
                 var a = await db
                     .Appointments.AsNoTracking()
+                    .VisibleTo(ctx.User)
                     .SingleOrDefaultAsync(x => x.Id == id, ct);
                 // 条件运算符 ? : 配合模式匹配：a is null → 404。
                 return a is null
@@ -165,6 +191,7 @@ public static class Endpoints
                     // && 短路条件直接翻译成 SQL AND。
                     .Where(x => x.ResourceId == id && x.SlotStartUtc >= from && x.SlotStartUtc < to)
                     .OrderBy(x => x.SlotStartUtc)
+                    .Select(x => new { x.ResourceId, x.SlotStartUtc })
                     .ToListAsync(ct);
             }
         );

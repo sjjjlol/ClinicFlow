@@ -1,0 +1,12 @@
+{
+  "name": "clinicflow-agent-runtime",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test runtime.test.mjs"
+  },
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "0.87.1",
+    "@earendil-works/pi-ai": "0.87.1"
+  }
+}

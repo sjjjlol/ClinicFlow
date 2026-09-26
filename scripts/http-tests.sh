@@ -13,3 +13,7 @@ node tests/http-tasks.mjs
 node tests/http-fhir.mjs
 
 node tests/http-response-loss.mjs
+
+node tests/http-agent.mjs
+
+node tests/http-accounts.mjs
