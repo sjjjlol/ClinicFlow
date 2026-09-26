@@ -36,3 +36,5 @@
 ### 第一阶段验证（2026-09-26）
 
 Orthanc 容器健康检查通过；STOW-RS 成功导入 18 个实例；已实际获取 Stone 的入口与配置。macOS 当前 Python 的证书链需通过 `PIP_CERT=/etc/ssl/cert.pem ./scripts/imaging-up.sh` 指定系统 CA；没有关闭 TLS 校验。若其他环境证书正常，直接运行即可。
+
+第二阶段设计与代码入口见 [设计与代码导读](design.md)。

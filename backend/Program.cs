@@ -5,6 +5,7 @@ using System.Threading.RateLimiting;
 using ClinicFlow;
 using ClinicFlow.Agent;
 using ClinicFlow.Fhir;
+using ClinicFlow.Imaging;
 using ClinicFlow.Integration;
 using ClinicFlow.Scheduling;
 using Microsoft.AspNetCore.Antiforgery;
@@ -58,6 +59,7 @@ builder
     .AddPolicy("schedule", p => p.RequireRole("Scheduler"))
     .AddPolicy("booking", p => p.RequireRole("Scheduler", "Booker"))
     .AddPolicy("tasks", p => p.RequireRole("TaskOperator"))
+    .AddPolicy("imaging", p => p.RequireRole("Scheduler", "TaskOperator"))
     .AddPolicy("admin", p => p.RequireRole("Admin"));
 
 // CSRF 防护：Cookie 会话必需；约定前端在 X-CSRF-TOKEN 头回传令牌。
@@ -120,6 +122,7 @@ builder.Services.ConfigureHttpJsonOptions(o =>
 // AddScoped：每请求一个实例（Spring @RequestScope）；SchedulingService 内部持有 Scoped 的 ClinicDb。
 builder.Services.AddScoped<SchedulingService>();
 builder.Services.AddAppointmentAgent();
+builder.Services.AddImaging(builder.Configuration);
 
 // AddSingleton：全应用一个实例；接口→实现 注册（≈ Spring 的 @Bean 返回接口类型）。
 builder.Services.AddSingleton<ITransactionProbe, NoTransactionProbe>();
@@ -252,6 +255,7 @@ app.MapGet(
 app.MapIdentity(); // 认证端点组（扩展方法，见 Identity.cs）
 app.MapAppointmentAgent();
 app.MapScheduling(); // 预约端点组（见 Scheduling/Endpoints.cs）
+app.MapImaging();
 app.MapFhir(); // FHIR R4 只读适配（见 Fhir/FhirAdapter.cs）
 app.MapOpenApi("/api/openapi/{documentName}.json").RequireAuthorization();
 

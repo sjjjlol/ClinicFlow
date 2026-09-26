@@ -1,3 +1,4 @@
+using ClinicFlow.Imaging;
 using ClinicFlow.Integration;
 using ClinicFlow.Scheduling;
 using Microsoft.EntityFrameworkCore;
@@ -26,6 +27,7 @@ public class ClinicDb(DbContextOptions<ClinicDb> options) : DbContext(options)
     // 但用链式代码表达，重构友好、可条件化）。override = Java 的 @Override（C# 必须显式写）。
     protected override void OnModelCreating(ModelBuilder b)
     {
+        ImagingModel.Configure(b);
         b.Entity<DemoUser>()
             .HasOne(x => x.Patient)
             .WithMany()
