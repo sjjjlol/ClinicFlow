@@ -24,6 +24,7 @@ builder.Services.AddDbContext<ClinicDb>(o =>
         new MySqlServerVersion(new Version(8, 4, 8))
     )
 );
+
 // Cookie 认证方案（≈ Spring Security 的 session cookie 认证）。
 builder
     .Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -50,16 +51,52 @@ builder
             return Task.CompletedTask;
         };
     });
+
 // 命名授权策略 ≈ @PreAuthorize("hasRole('Scheduler')") 的声明式版本，端点上用 .RequireAuthorization("schedule") 引用。
 builder
     .Services.AddAuthorizationBuilder()
     .AddPolicy("schedule", p => p.RequireRole("Scheduler"))
+    .AddPolicy("booking", p => p.RequireRole("Scheduler", "Booker"))
     .AddPolicy("tasks", p => p.RequireRole("TaskOperator"))
     .AddPolicy("admin", p => p.RequireRole("Admin"));
+
 // CSRF 防护：Cookie 会话必需；约定前端在 X-CSRF-TOKEN 头回传令牌。
 builder.Services.AddAntiforgery(o => o.HeaderName = "X-CSRF-TOKEN");
+
 // 内置限流中间件（≈ Bucket4j）：按客户端 IP 的固定窗口，限登录接口防爆破。
 builder.Services.AddRateLimiter(o =>
+{
+    o.RejectionStatusCode = 429;
+    o.OnRejected = async (context, ct) =>
+    {
+        var seconds = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter)
+            ? Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds))
+            : 60;
+        context.HttpContext.Response.Headers.RetryAfter = seconds.ToString(
+            System.Globalization.CultureInfo.InvariantCulture
+        );
+        await context.HttpContext.Response.WriteAsJsonAsync(
+            new
+            {
+                code = "rate_limited",
+                message = $"操作过于频繁，请在{seconds}秒后重试",
+                correlationId = context.HttpContext.TraceIdentifier,
+            },
+            cancellationToken: ct
+        );
+    };
+    o.AddPolicy(
+        "register",
+        ctx =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                ctx.Connection.RemoteIpAddress?.ToString() ?? "local",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 5,
+                    Window = TimeSpan.FromMinutes(1),
+                }
+            )
+    );
     o.AddPolicy(
         "login",
         ctx =>
@@ -72,26 +109,33 @@ builder.Services.AddRateLimiter(o =>
                     Window = TimeSpan.FromMinutes(1),
                 }
             )
-    )
-);
+    );
+});
+
 // 全局 JSON 序列化设置（≈ 配置 Jackson ObjectMapper）：注册自定义 DateTime 转换器，统一输出 UTC "Z" 格式。
 builder.Services.ConfigureHttpJsonOptions(o =>
     o.SerializerOptions.Converters.Add(new UtcDateTimeConverter())
 );
+
 // AddScoped：每请求一个实例（Spring @RequestScope）；SchedulingService 内部持有 Scoped 的 ClinicDb。
 builder.Services.AddScoped<SchedulingService>();
 builder.Services.AddAppointmentAgent();
+
 // AddSingleton：全应用一个实例；接口→实现 注册（≈ Spring 的 @Bean 返回接口类型）。
 builder.Services.AddSingleton<ITransactionProbe, NoTransactionProbe>();
 builder.Services.AddSingleton(TimeProvider.System); // 时钟抽象，测试可替换（≈ Java Clock）
+
 // HttpClient 工厂模式（≈ feign/RestTemplate 定制）：处理连接池与 Socket 耗尽问题。
 builder.Services.AddHttpClient<Dispatcher>(client => client.Timeout = TimeSpan.FromSeconds(5));
+
 // HostedService：随应用启停的后台任务（≈ @Scheduled 或独立线程，但由宿主管理生命周期）。
 if (builder.Configuration["Integration:Enabled"] != "false")
     builder.Services.AddHostedService<OutboxWorker>();
 builder.Services.AddClinicOpenApi(); // 扩展方法（见 ApiDocumentation.cs），注册 OpenAPI 文档生成
+
 // Build()：容器定型，之后开始装中间件。
 var app = builder.Build();
+
 // 启动时建一个临时作用域取 Scoped 服务：应用迁移 + 种子数据（≈ Flyway 自动迁移 + data.sql）。
 // using 块 ≈ try-with-resources：离开块自动 Dispose scope（释放 DbContext）。
 using (var scope = app.Services.CreateScope())
@@ -112,6 +156,7 @@ app.Use(
         await next();
     }
 );
+
 // 全局异常映射（≈ @ControllerAdvice + @ExceptionHandler）：写在管道最外层才能包住内层所有异常。
 app.Use(
     async (ctx, next) =>
@@ -163,8 +208,9 @@ app.Use(
     }
 );
 app.UseAuthentication(); // 认证：解析 Cookie → 还原 ClaimsPrincipal（≈ SecurityContextHolder 填充）
-app.UseAuthorization();  // 授权：检查端点的 .RequireAuthorization 策略
+app.UseAuthorization(); // 授权：检查端点的 .RequireAuthorization 策略
 app.UseRateLimiter();
+
 // CSRF 校验中间件：所有写操作（POST/PUT/DELETE）必须带有效 X-CSRF-TOKEN。
 app.Use(
     async (ctx, next) =>
@@ -195,6 +241,7 @@ app.Use(
         await next();
     }
 );
+
 // ---- 路由区：Minimal API（不写 Controller）；参数按类型/名字自动绑定 ----
 // 健康检查：ClinicDb 参数由 DI 容器注入（≈ @Autowired），CanConnectAsync 探活数据库。
 app.MapGet(
@@ -202,11 +249,12 @@ app.MapGet(
     async (ClinicDb db) =>
         new { status = await db.Database.CanConnectAsync() ? "ready" : "unavailable" }
 );
-app.MapIdentity();   // 认证端点组（扩展方法，见 Identity.cs）
+app.MapIdentity(); // 认证端点组（扩展方法，见 Identity.cs）
 app.MapAppointmentAgent();
 app.MapScheduling(); // 预约端点组（见 Scheduling/Endpoints.cs）
-app.MapFhir();       // FHIR R4 只读适配（见 Fhir/FhirAdapter.cs）
+app.MapFhir(); // FHIR R4 只读适配（见 Fhir/FhirAdapter.cs）
 app.MapOpenApi("/api/openapi/{documentName}.json").RequireAuthorization();
+
 // Outbox 队列查看（管理员）：演示 IQueryable 的链式 LINQ。
 app.MapGet(
         "/api/sync",
@@ -230,6 +278,7 @@ app.MapGet(
                 .ToListAsync(ct) // ToListAsync 是执行边界：这里才真正发 SQL
     )
     .RequireAuthorization("admin");
+
 // {id} 路由占位参数自动绑定到 string id（≈ @PathVariable）。
 app.MapGet(
         "/api/sync/{id}/attempts",
@@ -256,8 +305,8 @@ app.MapPost(
     .RequireAuthorization("admin");
 app.MapGet(
         "/api/patients",
-        async (ClinicDb db, CancellationToken ct) =>
-            await db.Patients.AsNoTracking().OrderBy(x => x.Id).ToListAsync(ct)
+        async (ClinicDb db, HttpContext ctx, CancellationToken ct) =>
+            await db.Patients.AsNoTracking().VisibleTo(ctx.User).OrderBy(x => x.Id).ToListAsync(ct)
     )
     .RequireAuthorization();
 app.MapGet(
@@ -266,9 +315,11 @@ app.MapGet(
             await db.Resources.AsNoTracking().OrderBy(x => x.Id).ToListAsync(ct)
     )
     .RequireAuthorization();
+
 // SPA 静态文件托管：UseDefaultFiles/UseStaticFiles ≈ Spring 的 classpath:/static 资源映射。
 app.UseDefaultFiles();
 app.UseStaticFiles();
+
 // API 兜底：{**path} 通配路由，未匹配的 /api/* 返回统一 404。
 app.MapMethods(
         "/api/{**path}",
@@ -276,6 +327,7 @@ app.MapMethods(
         () => Results.NotFound(new { code = "not_found" })
     )
     .ExcludeFromDescription(); // 从 OpenAPI 文档中排除
+
 // 前端路由兜底：非 /api 路径都回退到 index.html（SPA history 模式）。
 app.MapFallbackToFile("index.html");
 app.Run(); // 启动 Kestrel（内置 Web 服务器 ≈ 内嵌 Tomcat）并阻塞监听

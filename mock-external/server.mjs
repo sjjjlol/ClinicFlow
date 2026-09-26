@@ -17,7 +17,7 @@ const server=createServer(async(req,res)=>{
   if(mode==='unavailable'){reply(503,{error:'simulated_outage'});return;}
   if(mode==='permanent'){reply(422,{error:'simulated_rejection'});return;}
   const m=await body(req);
-  if(typeof m.messageId!=='string'||m.messageId.length>36||typeof m.appointmentId!=='string'||!Number.isSafeInteger(m.version)||m.version<1||m.snapshot?.id!==m.appointmentId||m.snapshot?.version!==m.version||!['Pending','Confirmed','Cancelled'].includes(m.snapshot?.status)){reply(400,{error:'invalid_message'});return;}
+  if(typeof m.messageId!=='string'||m.messageId.length>36||typeof m.appointmentId!=='string'||!Number.isSafeInteger(m.version)||m.version<1||m.snapshot?.id!==m.appointmentId||m.snapshot?.version!==m.version||!['Pending','Confirmed','Cancelled','Completed'].includes(m.snapshot?.status)){reply(400,{error:'invalid_message'});return;}
   db.exec('BEGIN IMMEDIATE');let duplicate=false,applied=false;
   try{
    const receipt=db.prepare('INSERT OR IGNORE INTO receipts VALUES(?,?,?)').run(m.messageId,m.appointmentId,m.version);duplicate=receipt.changes===0;

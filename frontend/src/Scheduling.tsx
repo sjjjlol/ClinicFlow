@@ -33,6 +33,7 @@ const labels: Record<string, string> = {
   Pending: "待确认",
   Confirmed: "已确认",
   Cancelled: "已取消",
+  Completed: "已完成",
   Delivered: "已同步",
   Failed: "同步失败",
   Processing: "同步中",
@@ -67,6 +68,7 @@ export default function Scheduling({
   user: User;
   resources: Catalog[];
 }) {
+  const canBook = user.role === "Scheduler" || user.role === "Booker";
   const [patients, setPatients] = useState<Catalog[]>([]),
     [items, setItems] = useState<Appointment[]>([]),
     [total, setTotal] = useState(0),
@@ -79,7 +81,7 @@ export default function Scheduling({
     [loading, setLoading] = useState(true),
     [notice, setNotice] = useState("");
   const [draft, setDraft] = useState({
-    patientId: 1,
+    patientId: user.patientId ?? 1,
     resourceId: 1,
     start: localInput(
       new Date(
@@ -193,6 +195,11 @@ export default function Scheduling({
       !window.confirm("确认取消此预约？占用时段将被释放。")
     )
       return;
+    if (
+      action === "complete" &&
+      !window.confirm("确认此预约已履行？登记完成后不能撤销、改期或取消。")
+    )
+      return;
     setBusy(true);
     setError("");
     const body = {
@@ -214,7 +221,9 @@ export default function Scheduling({
           ? "预约已取消，资源时段已释放。"
           : action === "confirm"
             ? "预约已确认。"
-            : "前置任务已完成。",
+            : action === "complete"
+              ? "预约已完成，历史记录已保留。"
+              : "前置任务已完成。",
       );
     } catch (e) {
       setError((e as Error).message);
@@ -224,8 +233,9 @@ export default function Scheduling({
   }
   return (
     <>
-      {user.role === "Scheduler" && (
+      {canBook && (
         <AppointmentAssistant
+          selfService={user.role === "Booker"}
           patients={patients}
           selectedPatientId={draft.patientId}
           onPatientChange={(id) => setDraft((v) => ({ ...v, patientId: id }))}
@@ -250,7 +260,7 @@ export default function Scheduling({
               }}
             >
               <option value="">全部状态</option>
-              {["Pending", "Confirmed", "Cancelled"].map((s) => (
+              {["Pending", "Confirmed", "Completed", "Cancelled"].map((s) => (
                 <option key={s} value={s}>
                   {labels[s]}
                 </option>
@@ -264,7 +274,7 @@ export default function Scheduling({
             >
               刷新
             </button>
-            {user.role === "Scheduler" && (
+            {canBook && (
               <button
                 className="primary"
                 onClick={() => {
@@ -331,9 +341,11 @@ export default function Scheduling({
                           "badge " +
                           (a.status === "Confirmed"
                             ? "green"
-                            : a.status === "Cancelled"
-                              ? "gray"
-                              : "")
+                            : a.status === "Completed"
+                              ? "green"
+                              : a.status === "Cancelled"
+                                ? "gray"
+                                : "")
                         }
                       >
                         {labels[a.status]} · {a.status}
@@ -398,7 +410,7 @@ export default function Scheduling({
                 <label>
                   患者
                   <select
-                    disabled={form !== "create"}
+                    disabled={form !== "create" || user.role === "Booker"}
                     value={draft.patientId}
                     onChange={(e) =>
                       setDraft({ ...draft, patientId: +e.target.value })
@@ -536,6 +548,17 @@ export default function Scheduling({
               </p>
               <small className="muted">{detail.appointment.id}</small>
             </div>
+            {user.role === "Booker" && (
+              <p className="notice">
+                {detail.appointment.status === "Pending"
+                  ? "时段已保留，等待工作人员核对并确认。"
+                  : detail.appointment.status === "Confirmed"
+                    ? "预约已确认，请按预约时间到场；开始后如需调整，请联系工作人员。"
+                    : detail.appointment.status === "Completed"
+                      ? "本次预约已完成，感谢你的配合。"
+                      : "本次预约已取消，可重新创建预约。"}
+              </p>
+            )}
             <h3>
               前置任务 <small>Prerequisites</small>
             </h3>
@@ -610,27 +633,52 @@ export default function Scheduling({
               >
                 刷新详情
               </button>
-              {user.role === "Scheduler" &&
-                detail.appointment.status !== "Cancelled" && (
+              {canBook &&
+                ["Pending", "Confirmed"].includes(
+                  detail.appointment.status,
+                ) && (
                   <>
-                    {detail.appointment.status === "Pending" && (
-                      <button
-                        disabled={busy}
-                        className="primary"
-                        onClick={() => mutate("confirm")}
-                      >
-                        确认预约
-                      </button>
-                    )}
+                    {user.role === "Scheduler" &&
+                      detail.appointment.status === "Pending" && (
+                        <button
+                          disabled={busy}
+                          className="primary"
+                          onClick={() => mutate("confirm")}
+                        >
+                          确认预约
+                        </button>
+                      )}
+                    {user.role === "Scheduler" &&
+                      detail.appointment.status === "Confirmed" && (
+                        <button
+                          className="primary"
+                          disabled={
+                            busy ||
+                            Date.parse(detail.appointment.endUtc) > Date.now()
+                          }
+                          title="预约结束后可登记完成"
+                          onClick={() => mutate("complete")}
+                        >
+                          登记完成
+                        </button>
+                      )}
                     <button
-                      disabled={busy}
+                      disabled={
+                        busy ||
+                        (user.role === "Booker" &&
+                          Date.parse(detail.appointment.startUtc) <= Date.now())
+                      }
                       className="danger"
                       onClick={() => mutate("cancel")}
                     >
                       取消预约
                     </button>
                     <button
-                      disabled={busy}
+                      disabled={
+                        busy ||
+                        (user.role === "Booker" &&
+                          Date.parse(detail.appointment.startUtc) <= Date.now())
+                      }
                       className="primary"
                       onClick={() => {
                         const a = detail.appointment;

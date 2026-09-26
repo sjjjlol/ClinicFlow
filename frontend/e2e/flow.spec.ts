@@ -1,13 +1,15 @@
+import { submitLogin } from "./support";
 import { test, expect } from "@playwright/test";
 test("A01 login and Apple-style workspace", async ({ page }) => {
   await page.goto("/");
+  await page.getByLabel("账号", { exact: true }).fill("scheduler");
   await expect(
     page.getByRole("heading", { name: "让预约，有条不紊。" }),
   ).toBeVisible();
   await page
     .getByLabel("密码", { exact: true })
     .fill(process.env.DEMO_PASSWORD!);
-  await page.getByRole("button", { name: "进入工作台" }).click();
+  await submitLogin(page);
   await expect(
     page.getByRole("heading", { name: "预约工作台", exact: true }),
   ).toBeVisible();
@@ -22,10 +24,11 @@ test("A01 login and Apple-style workspace", async ({ page }) => {
 });
 test("A02 create, detail and actionable conflict", async ({ page }) => {
   await page.goto("/");
+  await page.getByLabel("账号", { exact: true }).fill("scheduler");
   await page
     .getByLabel("密码", { exact: true })
     .fill(process.env.DEMO_PASSWORD!);
-  await page.getByRole("button", { name: "进入工作台" }).click();
+  await submitLogin(page);
   await page.getByRole("button", { name: "新建预约" }).click();
   const date = new Date(
     Date.UTC(2034, 0, 1) + Math.floor(Math.random() * 100000) * 900000,
@@ -45,10 +48,11 @@ test("A02 create, detail and actionable conflict", async ({ page }) => {
 });
 test("A06/A12 reschedule and cancel from detail", async ({ page }) => {
   await page.goto("/");
+  await page.getByLabel("账号", { exact: true }).fill("scheduler");
   await page
     .getByLabel("密码", { exact: true })
     .fill(process.env.DEMO_PASSWORD!);
-  await page.getByRole("button", { name: "进入工作台" }).click();
+  await submitLogin(page);
   await page.getByRole("button", { name: "新建预约" }).click();
   const date = new Date(
     Date.UTC(2036, 0, 1) + Math.floor(Math.random() * 100000) * 900000,
@@ -76,16 +80,17 @@ test("A06/A12 reschedule and cancel from detail", async ({ page }) => {
 });
 test("A21 complete collaborative appointment lifecycle", async ({ page }) => {
   async function login(role: string) {
-    await page.getByRole("combobox", { name: "演示角色" }).selectOption(role);
+    await page.getByLabel("账号", { exact: true }).fill(role);
     await page
       .getByLabel("密码", { exact: true })
       .fill(process.env.DEMO_PASSWORD!);
-    await page.getByRole("button", { name: "进入工作台" }).click();
+    await submitLogin(page);
     await expect(
       page.getByRole("heading", { name: "预约工作台", exact: true }),
     ).toBeVisible();
   }
   await page.goto("/");
+  await page.getByLabel("账号", { exact: true }).fill("scheduler");
   await login("scheduler");
   await page.getByRole("button", { name: "新建预约" }).click();
   const date = new Date(
@@ -149,11 +154,12 @@ test("Admin observes persistent sync queue and attempt history", async ({
   page,
 }) => {
   await page.goto("/");
-  await page.getByRole("combobox", { name: "演示角色" }).selectOption("admin");
+  await page.getByLabel("账号", { exact: true }).fill("scheduler");
+  await page.getByLabel("账号", { exact: true }).fill("admin");
   await page
     .getByLabel("密码", { exact: true })
     .fill(process.env.DEMO_PASSWORD!);
-  await page.getByRole("button", { name: "进入工作台" }).click();
+  await submitLogin(page);
   await page.getByRole("button", { name: "同步队列" }).click();
   await expect(
     page.getByRole("heading", { name: "外部同步队列" }),
@@ -172,10 +178,11 @@ test("Admin observes persistent sync queue and attempt history", async ({
 test("Mobile workspace and keyboard dialog dismissal", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
+  await page.getByLabel("账号", { exact: true }).fill("scheduler");
   await page
     .getByLabel("密码", { exact: true })
     .fill(process.env.DEMO_PASSWORD!);
-  await page.getByRole("button", { name: "进入工作台" }).click();
+  await submitLogin(page);
   await expect(
     page.getByRole("heading", { name: "预约工作台", exact: true }),
   ).toBeVisible();
@@ -221,11 +228,12 @@ test("Sync failure UI preserves retry identity after a network error", async ({
     }
   });
   await page.goto("/");
-  await page.getByRole("combobox", { name: "演示角色" }).selectOption("admin");
+  await page.getByLabel("账号", { exact: true }).fill("scheduler");
+  await page.getByLabel("账号", { exact: true }).fill("admin");
   await page
     .getByLabel("密码", { exact: true })
     .fill(process.env.DEMO_PASSWORD!);
-  await page.getByRole("button", { name: "进入工作台" }).click();
+  await submitLogin(page);
   await page.getByRole("button", { name: "同步队列" }).click();
   await expect(page.getByText("同步失败", { exact: true })).toBeVisible();
   await expect(page.getByText("HTTP 422", { exact: true })).toBeVisible();

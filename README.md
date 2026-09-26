@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/sjjjlol/ClinicFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/sjjjlol/ClinicFlow/actions/workflows/ci.yml)
 
-A runnable scheduling study project for a Java developer learning C#/.NET. Built with AI assistance, with deterministic failure exercises and a separate requirement for the learner to implement. All patients and resources are fictional. This is not clinical software, an Elekta product, or a certified FHIR implementation.
+A runnable scheduling study project for a Java developer learning C#/.NET. Built with AI assistance, with deterministic failure exercises with an implemented registration-to-completion appointment lifecycle. All patients and resources are fictional. This is not clinical software, an Elekta product, or a certified FHIR implementation.
 
 The Chinese UI uses an Apple-inspired visual style: quiet surfaces, clear typography, rounded panels and restrained blue accents.
 
@@ -18,6 +18,8 @@ cd ClinicFlow
 
 Open **http://localhost:5080**. The first build downloads pinned images and can take several minutes. The script generates a local, ignored `.env`, starts MySQL and the mock receiver, applies EF migrations, seeds fictional catalog data, and serves the built React UI from ASP.NET Core.
 
+Use **注册预约账号** on the login page to create a personal account. Registered users see **我的预约**, can book only for themselves, and can reschedule/cancel before the appointment starts. Staff verify prerequisites and confirm appointments; after the scheduled end, Scheduler records **Completed**. See [account and lifecycle guide](docs/accounts-and-lifecycle.md).
+
 Demo usernames: `scheduler`, `taskoperator`, `admin`. Read **DEMO_PASSWORD** from your local `.env` and use it for all three accounts. Passwords are hashed on first seed; editing `.env` does not rotate existing database password hashes. Demo roles have different permissions; Admin does not inherit scheduling/task privileges.
 
 停止：`docker compose --profile full down`（保留数据）。重置：`docker compose --profile full down -v`（删除本项目数据库、外部去重和会话密钥卷；仅用于清除虚构演示数据）。不要在本地API占用5080时启动容器API。
@@ -31,6 +33,7 @@ Pinned baseline: .NET SDK **10.0.401**, ASP.NET runtime/OpenAPI **10.0.12**, EF 
 ```sh
 ./scripts/configure.sh
 docker compose up -d --build --wait  # infrastructure only; app is in the full profile
+npm --prefix agent-runtime ci
 ./scripts/dotnet.sh tool restore
 ./scripts/api.sh
 # another terminal
@@ -41,19 +44,20 @@ Open http://127.0.0.1:5173. Vite proxies `/api` and `/fhir` to the local API. `s
 
 ## Workflow and guarantees
 
-Scheduler creates a Pending appointment and immediately reserves consecutive 15-minute slots. TaskOperator completes two prerequisites; Scheduler confirms, reschedules or cancels. Reschedule resets tasks. Slot uniqueness, stable resource lock ordering, version checks, idempotent commands, audit and Outbox are covered by real MySQL tests.
+Scheduler creates a Pending appointment and immediately reserves consecutive 15-minute slots. TaskOperator completes two prerequisites; Scheduler confirms, reschedules, cancels or records completion after the appointment ends. Completed and Cancelled are terminal states. Reschedule resets tasks. Slot uniqueness, stable resource lock ordering, version checks, idempotent commands, audit and Outbox are covered by real MySQL tests.
 
 The background worker uses short claim/completion transactions and HTTP outside transactions. A persistent receiver deduplicates MessageId and rejects older snapshot versions. Admin can inspect attempts and retry failed messages. This is at-least-once delivery with receiver deduplication.
 
 ## Kimi appointment agent / 预约协调助手
 
-Scheduler can ask for an appointment in natural language, inspect up to three candidate cards, and explicitly confirm creation. Real slot conflicts trigger a new search under the same constraints and require fresh confirmation. The existing scheduling transaction remains authoritative. Configure backend-only `KIMI_API_KEY` and `Agent__Model` in local `.env`; without a key, the ordinary booking form still works.
+Scheduler and registered users can ask for an appointment in natural language, inspect up to three candidate cards, and explicitly confirm creation. The runtime uses Pi Agent Core with real streaming text and tool progress. Registered users are restricted to their own profile. Real slot conflicts trigger a new search under the same constraints and require fresh confirmation. The existing scheduling transaction remains authoritative. Configure backend-only `KIMI_API_KEY` and `Agent__Model` in local `.env`; without a key, the ordinary booking form still works.
 
 See [setup, architecture, evaluation and demonstration guide](docs/appointment-agent.md). The optional conflict simulator is available only in Development with `Agent__DemoEnabled=true`.
 
 ## Verification
 
 ```sh
+npm --prefix agent-runtime ci && npm --prefix agent-runtime test
 ./scripts/test.sh                              # isolated clinicflow_tests database
 ./scripts/http-tests.sh                        # running local API; loads .env itself
 node --test mock-external/receiver.test.mjs     # isolated receiver restart/lost-response test
@@ -76,7 +80,7 @@ npm run test:e2e
 
 With `.env` exported, `node tests/http-integration.mjs` briefly stops/restarts the mock container and verifies real outage recovery. `docker compose stop mock` / `docker compose start mock` also demonstrate it manually. After five failures, Admin must retry. Fault-control HTTP endpoints are disabled in normal Compose.
 
-CI independently starts the container from fresh volumes, restores locked dependencies, builds, runs MySQL/HTTP/receiver/browser tests, exercises labs and upgrades, then publishes a portable ASP.NET + React artifact. Dockerfile provides repeatable container packaging; there is no automatic public deployment. [Acceptance evidence](docs/acceptance.md) and [development history](docs/development-progress.md) distinguish actual execution from pending checks.
+CI independently starts the container from fresh volumes, restores locked dependencies, builds, runs MySQL/HTTP/receiver/browser tests, exercises labs and upgrades, then publishes a portable ASP.NET + React + Pi runtime artifact (requires Node 24.13.1 on the target host). Dockerfile provides repeatable container packaging; there is no automatic public deployment. [Acceptance evidence](docs/acceptance.md) and [development history](docs/development-progress.md) distinguish actual execution from pending checks.
 
 ## Reading route / 学习入口
 
@@ -86,9 +90,9 @@ CI independently starts the container from fresh volumes, restores locked depend
 - [隔离故障实验](labs/README.md) · [RCA与英文缺陷更新](docs/rca.md)
 - [升级与备份恢复记录](docs/upgrade-checklist.md)
 - [演示脚本与面试材料](docs/demo-and-interview.md)
-- [留给用户独立实现的Completed需求](docs/independent-task.md)
+- [Completed实现与验证入口](docs/independent-task.md)
 - [原始规格](SPEC.md)
 
 After login, generated OpenAPI is available at `/api/openapi/v1.json`.
 
-Limits: no real hospital integration, dosage calculation, treatment planning, device control, registration/SSO, message broker or full FHIR conformance. No automatic retention/cleanup for audit, idempotency or receipts. The mock's built-in Node SQLite API is experimental in the pinned runtime. Lab timings are reproducible laptop observations, not production gains. Database startup migrations and seeded accounts are for single-instance local demonstration.
+Limits: no real hospital integration, dosage calculation, treatment planning, device control, password recovery/SSO, message broker or full FHIR conformance. No automatic retention/cleanup for audit, idempotency or receipts. The mock's built-in Node SQLite API is experimental in the pinned runtime. Lab timings are reproducible laptop observations, not production gains. Database startup migrations and seeded accounts are for single-instance local demonstration.

@@ -1,4 +1,6 @@
+using System.IO.Pipelines;
 using System.Net;
+using System.Text;
 using System.Text.Json.Nodes;
 using ClinicFlow.Agent;
 using ClinicFlow.Scheduling;
@@ -88,6 +90,127 @@ public class KimiModelTests
                 )
             ).Code
         );
+    }
+
+    [Fact]
+    public async Task RealStreamYieldsTextBeforeDoneAndNeverExposesReasoning()
+    {
+        var pipe = new Pipe();
+        var model = new KimiAgentModel(
+            new HttpClient(
+                new Stub(async request =>
+                {
+                    var body = JsonNode.Parse(await request.Content!.ReadAsStringAsync())!;
+                    Assert.True(body["stream"]!.GetValue<bool>());
+                    return new(HttpStatusCode.OK)
+                    {
+                        Content = new StreamContent(pipe.Reader.AsStream()),
+                    };
+                })
+            ),
+            Config("test-key")
+        );
+        var arrived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var text = "";
+        var result = model.RespondStreaming(
+            [],
+            "rules",
+            part =>
+            {
+                text += part;
+                arrived.TrySetResult();
+                return Task.CompletedTask;
+            },
+            default
+        );
+        var bytes = Encoding.UTF8.GetBytes(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"你好\",\"reasoning_content\":\"private-reasoning\"},\"finish_reason\":null}]}\n\n"
+        );
+        // Split even in the middle of a UTF-8 code point.
+        for (var i = 0; i < bytes.Length; i++)
+            await pipe.Writer.WriteAsync(bytes.AsMemory(i, 1));
+        await arrived.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(result.IsCompleted);
+        Assert.Equal("你好", text);
+        await pipe.Writer.WriteAsync(
+            Encoding.UTF8.GetBytes(
+                "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"
+            )
+        );
+        await pipe.Writer.CompleteAsync();
+        Assert.Equal("你好", (await result)["content"]!.GetValue<string>());
+        Assert.DoesNotContain("private-reasoning", text);
+    }
+
+    [Fact]
+    public async Task StreamingReassemblesFragmentedToolArguments()
+    {
+        var frames = new[]
+        {
+            """{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"a","function":{"name":"search_slots","arguments":"{\"patientId\":"}}]},"finish_reason":null}]}""",
+            """{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"3}"}}]},"finish_reason":"tool_calls"}]}""",
+            """{"choices":[],"usage":{}}""",
+            "[DONE]",
+        };
+        var model = new KimiAgentModel(
+            new HttpClient(
+                new Stub(_ =>
+                    Task.FromResult(
+                        new HttpResponseMessage(HttpStatusCode.OK)
+                        {
+                            Content = new StringContent(
+                                string.Join("", frames.Select(f => "data: " + f + "\n\n"))
+                            ),
+                        }
+                    )
+                )
+            ),
+            Config("test-key")
+        );
+        var result = await model.RespondStreaming(
+            [],
+            "rules",
+            _ => throw new Exception("Tool arguments are not user text"),
+            default
+        );
+        Assert.Equal(
+            "search_slots",
+            result["tool_calls"]![0]!["function"]!["name"]!.GetValue<string>()
+        );
+        Assert.Equal(
+            3,
+            JsonNode.Parse(
+                result["tool_calls"]![0]!["function"]!["arguments"]!.GetValue<string>()
+            )!["patientId"]!.GetValue<int>()
+        );
+    }
+
+    [Theory]
+    [InlineData(
+        "data: {\"choices\":[{\"delta\":{\"content\":\"partial\"},\"finish_reason\":null}]}\n\n"
+    )]
+    [InlineData(
+        "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"length\"}]}\n\ndata: [DONE]\n\n"
+    )]
+    public async Task TruncatedStreamsAreRejected(string body)
+    {
+        var model = new KimiAgentModel(
+            new HttpClient(
+                new Stub(_ =>
+                    Task.FromResult(
+                        new HttpResponseMessage(HttpStatusCode.OK)
+                        {
+                            Content = new StringContent(body),
+                        }
+                    )
+                )
+            ),
+            Config("test-key")
+        );
+        var error = await Assert.ThrowsAsync<BusinessException>(() =>
+            model.RespondStreaming([], "rules", _ => Task.CompletedTask, default)
+        );
+        Assert.Equal("model_incomplete", error.Code);
     }
 
     static IConfiguration Config(string? key) =>

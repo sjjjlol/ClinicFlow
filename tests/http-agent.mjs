@@ -16,4 +16,19 @@ assert.equal((await c.request('/api/agent/forged/confirm', {candidateId: 'forged
 assert.equal((await c.request('/api/agent/messages', {message: ''})).status, 400);
 c.token = '';
 assert.equal((await c.request('/api/agent/messages', {message: '预约'})).status, 400);
-console.log('PASS agent HTTP: authentication, Scheduler-only authorization, CSRF, forged session, input validation');
+console.log('PASS agent HTTP: authentication, staff role authorization, CSRF, forged session, input validation');
+
+// Invalid inputs exercise the real SSE endpoint without spending model tokens.
+const base = process.env.API_URL ?? 'http://127.0.0.1:5080';
+const streamClient = await new Client().login();
+const headers = {'Content-Type':'application/json','Cookie':[...streamClient.cookies].map(([k,v])=>`${k}=${v}`).join('; '),'X-CSRF-TOKEN':streamClient.token};
+const stream = await fetch(base+'/api/agent/messages/stream', {method:'POST',headers,body:JSON.stringify({message:''})});
+assert.equal(stream.status,200);
+assert.ok(stream.headers.get('content-type').includes('text/event-stream'));
+const frames = (await stream.text()).split('\n\n').filter(Boolean).map(x=>JSON.parse(x.slice(6)));
+assert.equal(frames[0].type,'progress');
+assert.equal(frames.at(-1).type,'error');
+assert.equal(frames.at(-1).code,'invalid_message');
+const noCsrf = await fetch(base+'/api/agent/messages/stream', {method:'POST',headers:{...headers,'X-CSRF-TOKEN':''},body:'{}'});
+assert.equal(noCsrf.status,400);
+console.log('PASS streaming HTTP: SSE framing, explicit terminal error and CSRF');

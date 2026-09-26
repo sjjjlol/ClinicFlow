@@ -800,3 +800,47 @@ tbody tr:hover {
   overflow-wrap: anywhere;
   font-size: 12px;
 }
+
+.demo-login {
+  margin-top: 18px;
+  color: var(--muted, #667085);
+}
+.demo-login summary {
+  cursor: pointer;
+  margin-bottom: 12px;
+}
+.login-card .link-button.wide {
+  margin-top: 12px;
+}
+.text-stat {
+  overflow-wrap: anywhere;
+}
+
+.assistant-progress {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  color: #596579;
+  font-size: 13px;
+  margin: 12px 0;
+}
+.assistant-live-trace {
+  padding-left: 20px;
+  color: #596579;
+  font-size: 13px;
+}
+.stream-cursor {
+  color: #087cff;
+  animation: stream-blink 1s steps(2) infinite;
+}
+@keyframes stream-blink {
+  50% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stream-cursor {
+    animation: none;
+  }
+}

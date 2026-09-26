@@ -12,6 +12,7 @@ public class FhirTests
     [InlineData("Pending", "pending")]
     [InlineData("Confirmed", "booked")]
     [InlineData("Cancelled", "cancelled")]
+    [InlineData("Completed", "fulfilled")]
     public void A20_AppointmentMappingUsesR4FieldsAndUtc(string domain, string fhir)
     {
         var a = new Appointment

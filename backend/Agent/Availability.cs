@@ -73,20 +73,30 @@ public class Availability(ClinicDb db, TimeProvider clock)
         return (from, to, duration, earliest, latest);
     }
 
-    public async Task<List<Candidate>> Search(SearchRequest q, CancellationToken ct)
+    public async Task<List<Candidate>> Search(
+        SearchRequest q,
+        CancellationToken ct,
+        int? patientScope = null
+    )
     {
+        if (patientScope is not null && q.PatientId != patientScope)
+            throw new BusinessException("patient_forbidden", "只能为自己的档案查询预约", 403);
         var (from, to, duration, earliest, latest) = Validate(q);
-        // This feature intentionally only exposes the two seeded, fictional patients.
+        // Staff use demo patients; self-service callers can only access their bound patient.
         var patient =
             await db
                 .Patients.AsNoTracking()
                 .SingleOrDefaultAsync(
                     x =>
                         x.Id == q.PatientId
-                        && (x.Identifier == "DEMO-001" || x.Identifier == "DEMO-002"),
+                        && (
+                            patientScope != null
+                                ? x.Id == patientScope
+                                : (x.Identifier == "DEMO-001" || x.Identifier == "DEMO-002")
+                        ),
                     ct
                 )
-            ?? throw new BusinessException("patient_missing", "仅支持演示患者", 404);
+            ?? throw new BusinessException("patient_missing", "预约档案不存在或不可访问", 404);
         var resources = await db
             .Resources.AsNoTracking()
             .Where(x => q.ResourceId == null || x.Id == q.ResourceId)

@@ -18,10 +18,11 @@ public record AgentMessage(string? SessionId, string Message, int? SelectedPatie
 
 public record ConfirmCandidate(string CandidateId);
 
-public class AgentSession(string owner, DateTimeOffset expires)
+public class AgentSession(string owner, DateTimeOffset expires, int? patientScope = null)
 {
     public string Id { get; } = Guid.NewGuid().ToString();
     public string Owner { get; } = owner;
+    public int? PatientScope { get; } = patientScope;
     public DateTimeOffset Expires { get; } = expires;
     public SemaphoreSlim Gate { get; } = new(1, 1);
     public JsonArray History { get; set; } = [];
@@ -40,7 +41,7 @@ public class AgentSessions(TimeProvider clock)
     readonly Dictionary<string, AgentSession> sessions = [];
     readonly object sync = new();
 
-    public AgentSession Get(string? id, string owner)
+    public AgentSession Get(string? id, string owner, int? patientScope = null)
     {
         lock (sync)
         {
@@ -53,7 +54,11 @@ public class AgentSessions(TimeProvider clock)
                 sessions.Remove(key);
             if (id is not null)
             {
-                if (!sessions.TryGetValue(id, out var existing) || existing.Owner != owner)
+                if (
+                    !sessions.TryGetValue(id, out var existing)
+                    || existing.Owner != owner
+                    || existing.PatientScope != patientScope
+                )
                     throw new BusinessException(
                         "session_expired",
                         "会话已失效，请先查看预约列表确认上次结果，再开启新会话",
@@ -63,7 +68,7 @@ public class AgentSessions(TimeProvider clock)
             }
             if (sessions.Count >= 128)
                 throw new BusinessException("agent_busy", "助手会话已满，请稍后重试", 429);
-            var session = new AgentSession(owner, clock.GetUtcNow().AddMinutes(30));
+            var session = new AgentSession(owner, clock.GetUtcNow().AddMinutes(30), patientScope);
             sessions.Add(session.Id, session);
             return session;
         }

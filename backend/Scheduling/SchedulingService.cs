@@ -23,7 +23,7 @@ public class NoTransactionProbe : ITransactionProbe
 
 // 主构造函数：SchedulingService(ClinicDb db, ITransactionProbe probe)
 // = 声明两个构造参数并可在类体内直接当字段用；DI 容器按参数类型自动注入（无需 @Autowired）。
-public class SchedulingService(ClinicDb db, ITransactionProbe probe)
+public class SchedulingService(ClinicDb db, ITransactionProbe probe, TimeProvider? clock = null)
 {
     // static readonly ≈ Java static final；JsonSerializerDefaults.Web = camelCase 命名策略。
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
@@ -42,7 +42,8 @@ public class SchedulingService(ClinicDb db, ITransactionProbe probe)
         string actor,
         string key,
         string correlation,
-        CancellationToken ct
+        CancellationToken ct,
+        bool selfService = false
     ) =>
         Execute(
             actor,
@@ -57,6 +58,8 @@ public class SchedulingService(ClinicDb db, ITransactionProbe probe)
             // async lambda：传给 Execute 的业务动作，稍后在其事务内执行。
             async () =>
             {
+                if (selfService)
+                    RequireFuture(input.StartUtc.UtcDateTime);
                 var slots = Rules.Slots(input.StartUtc.UtcDateTime, input.EndUtc.UtcDateTime);
                 // [input.ResourceId]：C# 12 集合表达式，创建只有一个元素的数组。
                 await LockResources([input.ResourceId], ct);
@@ -94,7 +97,8 @@ public class SchedulingService(ClinicDb db, ITransactionProbe probe)
         string actor,
         string key,
         string correlation,
-        CancellationToken ct
+        CancellationToken ct,
+        int? patientScope = null
     ) =>
         Execute(
             actor,
@@ -112,6 +116,14 @@ public class SchedulingService(ClinicDb db, ITransactionProbe probe)
                 var before =
                     await db.Appointments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, ct)
                     ?? throw new BusinessException("appointment_missing", "预约不存在", 404);
+                if (patientScope is not null)
+                {
+                    if (before.PatientId != patientScope)
+                        throw new BusinessException("appointment_missing", "预约不存在", 404);
+                    if (operation is not ("cancel" or "reschedule"))
+                        throw new BusinessException("forbidden", "当前角色没有此操作权限", 403);
+                    RequireFuture(before.StartUtc);
+                }
                 await probe.Reach("after-preread", ct);
                 // 资源按固定顺序（升序）加锁，避免两个请求交叉锁两个资源造成死锁。
                 await LockResources([before.ResourceId, input.ResourceId ?? before.ResourceId], ct);
@@ -130,8 +142,13 @@ public class SchedulingService(ClinicDb db, ITransactionProbe probe)
                         "version_conflict",
                         "预约已被其他人更新，请刷新详情后重新操作"
                     );
-                if (a.Status == "Cancelled")
-                    throw new BusinessException("invalid_state", "已取消的预约不可继续修改");
+                if (a.Status is "Cancelled" or "Completed")
+                    throw new BusinessException(
+                        "invalid_state",
+                        "已取消或已完成的预约不可继续修改"
+                    );
+                if (patientScope is not null)
+                    RequireFuture(a.StartUtc);
                 object? change = null; // object ≈ Java Object；这里装随操作变化的审计附加信息
                 if (operation == "reschedule")
                 {
@@ -141,6 +158,8 @@ public class SchedulingService(ClinicDb db, ITransactionProbe probe)
                             "改期须提供资源及起止时间",
                             400
                         );
+                    if (patientScope is not null)
+                        RequireFuture(input.StartUtc.Value.UtcDateTime);
                     // .Value：取 Nullable<T> 的值（判空后使用；≈ Optional.get()）。
                     var slots = Rules.Slots(
                         input.StartUtc.Value.UtcDateTime,
@@ -176,6 +195,20 @@ public class SchedulingService(ClinicDb db, ITransactionProbe probe)
                         await db.SlotClaims.Where(x => x.AppointmentId == id).ToListAsync(ct)
                     );
                     a.Status = "Cancelled";
+                }
+                else if (operation == "complete")
+                {
+                    if (a.Status != "Confirmed")
+                        throw new BusinessException("invalid_state", "仅已确认预约可登记完成");
+                    if (a.EndUtc > (clock ?? TimeProvider.System).GetUtcNow().UtcDateTime)
+                        throw new BusinessException(
+                            "appointment_not_ended",
+                            "预约尚未结束，不能登记完成"
+                        );
+                    db.SlotClaims.RemoveRange(
+                        await db.SlotClaims.Where(x => x.AppointmentId == id).ToListAsync(ct)
+                    );
+                    a.Status = "Completed";
                 }
                 else if (operation == "complete-task")
                 {
@@ -224,6 +257,7 @@ public class SchedulingService(ClinicDb db, ITransactionProbe probe)
                         "cancel" => "Cancelled",
                         "reschedule" => "Rescheduled",
                         "confirm" => "Confirmed",
+                        "complete" => "Completed",
                         _ => "TaskCompleted",
                     },
                     actor,
@@ -235,6 +269,16 @@ public class SchedulingService(ClinicDb db, ITransactionProbe probe)
             },
             ct
         );
+
+    void RequireFuture(DateTime start)
+    {
+        if (start <= (clock ?? TimeProvider.System).GetUtcNow().UtcDateTime)
+            throw new BusinessException(
+                "appointment_started",
+                "请选择未来时间；已开始的预约请联系工作人员处理",
+                409
+            );
+    }
 
     public Task<Appointment> RetrySync(
         string id,

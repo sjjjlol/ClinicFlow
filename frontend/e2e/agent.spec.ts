@@ -1,4 +1,22 @@
-import { test, expect } from "@playwright/test";
+import { submitLogin } from "./support";
+import { test, expect, type Route } from "@playwright/test";
+
+async function agentFulfill(route: Route, payload: { json: any }) {
+  return route.fulfill(
+    payload.json.sessionId
+      ? {
+          contentType: "text/event-stream",
+          body:
+            "data: " +
+            JSON.stringify({ type: "delta", text: payload.json.message }) +
+            "\n\n" +
+            "data: " +
+            JSON.stringify({ type: "result", reply: payload.json }) +
+            "\n\n",
+        }
+      : payload,
+  );
+}
 
 test("agent cards require explicit confirmation and fresh confirmation after conflict", async ({
   page,
@@ -28,10 +46,10 @@ test("agent cards require explicit confirmation and fresh confirmation after con
   let writes = 0;
   let confirming = 0;
   await page.route("**/api/agent/config", (r) =>
-    r.fulfill({ json: { configured: true, demoEnabled: false } }),
+    agentFulfill(r, { json: { configured: true, demoEnabled: false } }),
   );
-  await page.route("**/api/agent/messages", (r) =>
-    r.fulfill({
+  await page.route("**/api/agent/messages/stream", (r) =>
+    agentFulfill(r, {
       json: {
         sessionId: "ui-test",
         message: "请确认候选",
@@ -41,11 +59,11 @@ test("agent cards require explicit confirmation and fresh confirmation after con
       },
     }),
   );
-  await page.route("**/api/agent/ui-test/confirm", async (r) => {
+  await page.route("**/api/agent/ui-test/confirm/stream", async (r) => {
     confirming++;
     if (confirming === 1) {
       expect(r.request().postDataJSON().candidateId).toBe("first");
-      await r.fulfill({
+      await agentFulfill(r, {
         json: {
           sessionId: "ui-test",
           message: "原时段已被占用，请再次确认替代方案",
@@ -64,7 +82,7 @@ test("agent cards require explicit confirmation and fresh confirmation after con
     } else {
       expect(r.request().postDataJSON().candidateId).toBe("second");
       writes++;
-      await r.fulfill({
+      await agentFulfill(r, {
         json: {
           sessionId: "ui-test",
           message: "预约已创建",
@@ -76,10 +94,11 @@ test("agent cards require explicit confirmation and fresh confirmation after con
     }
   });
   await page.goto("/");
+  await page.getByLabel("账号", { exact: true }).fill("scheduler");
   await page
     .getByLabel("密码", { exact: true })
     .fill(process.env.DEMO_PASSWORD!);
-  await page.getByRole("button", { name: "进入工作台" }).click();
+  await submitLogin(page);
   await page.getByLabel("预约需求").fill("下周一下午45分钟");
   await page.getByRole("button", { name: "发送需求", exact: true }).click();
   await expect(
@@ -119,10 +138,10 @@ test("agent preserves the same candidate when a confirmation response is lost", 
   };
   let attempts = 0;
   await page.route("**/api/agent/config", (r) =>
-    r.fulfill({ json: { configured: true, demoEnabled: false } }),
+    agentFulfill(r, { json: { configured: true, demoEnabled: false } }),
   );
-  await page.route("**/api/agent/messages", (r) =>
-    r.fulfill({
+  await page.route("**/api/agent/messages/stream", (r) =>
+    agentFulfill(r, {
       json: {
         sessionId: "retry",
         message: "请确认",
@@ -132,11 +151,11 @@ test("agent preserves the same candidate when a confirmation response is lost", 
       },
     }),
   );
-  await page.route("**/api/agent/retry/confirm", async (r) => {
+  await page.route("**/api/agent/retry/confirm/stream", async (r) => {
     expect(r.request().postDataJSON().candidateId).toBe("stable");
     if (++attempts === 1) await r.abort("failed");
     else
-      await r.fulfill({
+      await agentFulfill(r, {
         json: {
           sessionId: "retry",
           message: "创建成功",
@@ -147,10 +166,11 @@ test("agent preserves the same candidate when a confirmation response is lost", 
       });
   });
   await page.goto("/");
+  await page.getByLabel("账号", { exact: true }).fill("scheduler");
   await page
     .getByLabel("密码", { exact: true })
     .fill(process.env.DEMO_PASSWORD!);
-  await page.getByRole("button", { name: "进入工作台" }).click();
+  await submitLogin(page);
   await page.getByLabel("预约需求").fill("下周一下午45分钟");
   await page.getByRole("button", { name: "发送需求", exact: true }).click();
   await page.getByRole("button", { name: "确认此候选并创建" }).click();

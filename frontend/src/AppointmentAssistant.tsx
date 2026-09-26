@@ -1,5 +1,12 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { api, ApiError, type Catalog } from "./api";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  api,
+  ApiError,
+  streamApi,
+  type StreamEvent,
+  type StreamTrace,
+  type Catalog,
+} from "./api";
 import { time, type Appointment } from "./Scheduling";
 
 type Candidate = {
@@ -27,7 +34,9 @@ export default function AppointmentAssistant({
   selectedPatientId,
   onPatientChange,
   onCreated,
+  selfService = false,
 }: {
+  selfService?: boolean;
   patients: Catalog[];
   selectedPatientId: number;
   onPatientChange: (id: number) => void;
@@ -41,6 +50,49 @@ export default function AppointmentAssistant({
     [],
   );
   const [reply, setReply] = useState<Reply | null>(null);
+  const [sessionId, setSessionId] = useState<string | undefined>();
+  const [streamText, setStreamText] = useState("");
+  const [progress, setProgress] = useState("");
+  const [liveTrace, setLiveTrace] = useState<StreamTrace[]>([]);
+  const [sending, setSending] = useState(false);
+  const active = useRef<AbortController | null>(null);
+  const conversation = useRef<HTMLDivElement>(null);
+  useEffect(() => () => active.current?.abort(), []);
+  useEffect(() => {
+    const node = conversation.current;
+    if (node) node.scrollTop = node.scrollHeight;
+  }, [messages, streamText, progress]);
+  function onStream(event: StreamEvent<Reply>) {
+    if (event.type === "session" && event.sessionId)
+      setSessionId(event.sessionId);
+    if (event.type === "message_start") {
+      setStreamText("");
+      setProgress(event.message ?? "正在回复…");
+    }
+    if (event.type === "delta") {
+      setStreamText((v) => v + (event.text ?? ""));
+      setProgress("正在回复…");
+    }
+    if (event.type === "progress") setProgress(event.message ?? "正在处理…");
+    if (event.type === "trace" && event.trace)
+      setLiveTrace((v) => [...v, event.trace!]);
+  }
+  async function stream(url: string, body: unknown) {
+    const controller = new AbortController();
+    active.current = controller;
+    setStreamText("");
+    setLiveTrace([]);
+    setProgress("正在连接预约助手…");
+    const timer = window.setTimeout(() => controller.abort(), 110_000);
+    try {
+      return await streamApi<Reply>(url, body, onStream, controller.signal);
+    } finally {
+      window.clearTimeout(timer);
+      active.current = null;
+      setStreamText("");
+      setProgress("");
+    }
+  }
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -53,6 +105,7 @@ export default function AppointmentAssistant({
   }, []);
   function receive(next: Reply) {
     setReply(next);
+    setSessionId(next.sessionId);
     setMessages((v) => [...v, { role: "助手", text: next.message }]);
   }
   async function send(e: FormEvent) {
@@ -60,6 +113,7 @@ export default function AppointmentAssistant({
     if (!input.trim()) return;
     setBusy(true);
     setError("");
+    setSending(true);
     const text = input;
     setInput("");
     setMessages((v) => [...v, { role: "你", text }]);
@@ -67,17 +121,22 @@ export default function AppointmentAssistant({
     setReply((v) => (v ? { ...v, candidates: [] } : null));
     try {
       receive(
-        await api<Reply>("/api/agent/messages", {
-          sessionId: reply?.sessionId,
+        await stream("/api/agent/messages/stream", {
+          sessionId,
           message: text,
           selectedPatientId,
         }),
       );
     } catch (e) {
-      setError((e as Error).message);
+      setError(
+        (e as Error).name === "AbortError"
+          ? "回复已停止，未创建预约；可修改需求后重新发送。"
+          : (e as Error).message,
+      );
       setInput(text);
     } finally {
       setBusy(false);
+      setSending(false);
     }
   }
   async function confirm(c: Candidate) {
@@ -86,9 +145,12 @@ export default function AppointmentAssistant({
     setError("");
     setUncertain(c.id);
     try {
-      const next = await api<Reply>(`/api/agent/${reply.sessionId}/confirm`, {
-        candidateId: c.id,
-      });
+      const next = await stream(
+        `/api/agent/${reply.sessionId}/confirm/stream`,
+        {
+          candidateId: c.id,
+        },
+      );
       receive(next);
       setUncertain(null);
       if (next.appointment) await onCreated(next.appointment);
@@ -141,12 +203,14 @@ export default function AppointmentAssistant({
     <section className="panel assistant" aria-label="预约协调助手">
       <div className="panel-heading">
         <h2>
-          预约协调助手 <span>Kimi Agent</span>
+          预约协调助手 <span>Pi Agent · Kimi</span>
         </h2>
         <button
           disabled={busy || !!uncertain}
           onClick={() => {
             setReply(null);
+            setSessionId(undefined);
+            setLiveTrace([]);
             setMessages([]);
             setError("");
             setInput("");
@@ -158,7 +222,7 @@ export default function AppointmentAssistant({
       </div>
       <p className="muted">
         描述需求，核对候选，再确认创建。上海时区 · 工作日 09:00–17:00 ·
-        仅虚构患者
+        {selfService ? "仅为本人预约" : "演示预约档案"}
       </p>
       {config && !config.configured && (
         <p className="notice">
@@ -167,13 +231,16 @@ export default function AppointmentAssistant({
       )}
       <div
         className="assistant-conversation"
+        ref={conversation}
         role="log"
         aria-label="助手对话"
         aria-live="polite"
       >
         {messages.length === 0 && (
           <p className="muted">
-            例如：帮当前患者找下周一到周五下午连续 45 分钟的预约，任意预约室。
+            {selfService
+              ? "例如：帮我找下周一到周五下午连续45分钟的预约，任意预约室。"
+              : "例如：帮当前患者找下周一到周五下午连续45分钟的预约，任意预约室。"}
           </p>
         )}
         {messages.map((m, i) => (
@@ -185,7 +252,38 @@ export default function AppointmentAssistant({
             <p>{m.text}</p>
           </div>
         ))}
+        {busy && (
+          <div
+            className="assistant-message streaming-message"
+            aria-label="助手流式回复"
+          >
+            <strong>助手</strong>
+            <p>
+              {streamText || progress || "正在处理…"}
+              <span className="stream-cursor" aria-hidden="true">
+                ▍
+              </span>
+            </p>
+          </div>
+        )}
       </div>
+      {busy && (
+        <div className="assistant-progress" aria-live="polite">
+          <span>{progress}</span>
+          {sending && (
+            <button type="button" onClick={() => active.current?.abort()}>
+              停止回复
+            </button>
+          )}
+        </div>
+      )}
+      {busy && liveTrace.length > 0 && (
+        <ul className="assistant-live-trace" aria-label="实时执行记录">
+          {liveTrace.map((t, i) => (
+            <li key={i}>✓ {t.outcome}</li>
+          ))}
+        </ul>
+      )}
       {error && (
         <p role="alert" className="error">
           {error}
@@ -243,17 +341,17 @@ export default function AppointmentAssistant({
       )}
       <form className="assistant-form" onSubmit={(e) => void send(e)}>
         <label>
-          助手当前患者
+          {selfService ? "预约人（本人）" : "助手当前患者"}
           <select
             value={selectedPatientId}
-            disabled={busy || !!uncertain}
+            disabled={selfService || busy || !!uncertain}
             onChange={(e) => {
               onPatientChange(Number(e.target.value));
               setReply((v) => (v ? { ...v, candidates: [] } : null));
             }}
           >
             {patients
-              .filter((p) => p.id === 1 || p.id === 2)
+              .filter((p) => selfService || p.id === 1 || p.id === 2)
               .map((p) => (
                 <option value={p.id} key={p.id}>
                   {p.name}

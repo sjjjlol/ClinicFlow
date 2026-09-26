@@ -40,7 +40,7 @@ else if (args[0] == "upgrade")
     if ((await db.Appointments.SingleAsync()).Id != before)
         throw new Exception("Data changed");
     Console.WriteLine(
-        "Applied additive ResourceScheduleIndex migration; appointment identity preserved."
+        "Applied pending additive migrations (including RegisteredAccounts); appointment identity preserved."
     );
 }
 else if (args[0] != "verify-old")

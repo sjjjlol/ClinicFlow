@@ -1,6 +1,6 @@
-# 预约协调 Agent（Kimi）
+# 预约协调 Agent（Pi Agent Core + Kimi）
 
-第一版服务于作品展示与技术验证：Scheduler 用自然语言提出需求，助手查询并给出最多三个候选，用户点击确认卡后创建 Pending 预约。发生真实资源冲突时，重新查询原约束下的候选，再次等待确认。聊天中的“确认”不会写入预约。
+第一版服务于作品展示与技术验证：Scheduler与注册预约者Booker用自然语言提出需求，助手查询并给出最多三个候选，用户点击确认卡后创建 Pending 预约。发生真实资源冲突时，重新查询原约束下的候选，再次等待确认。聊天中的“确认”不会写入预约。
 
 ## 启动与配置
 
@@ -21,7 +21,7 @@ Agent__DemoEnabled=false
 
 ## 用户流程与范围
 
-- 页面选中的患者可沿用，也可以在助手中选取。仅暴露两名种子虚构患者（DEMO-001/002）。
+- Booker页面自动固定本人档案，不能切换、查询或确认其他人的预约。Scheduler可在两名种子虚构患者（DEMO-001/002）间选择。
 - 患者、时长、日期范围缺失时追问；未指定资源则查询全部预约资源。日期范围最多31天。
 - 上海时区，工作日09:00–17:00；15分钟粒度，单次15–240分钟；候选必须在未来。用户的日期与每日时间窗口代表可用时间。
 - 只做新建，不自动完成人工核对，不处理临床适配、节假日、改期、取消和长期偏好。
@@ -36,15 +36,21 @@ Agent__DemoEnabled=false
 sequenceDiagram
     participant U as 用户 / React
     participant A as AppointmentAgent
+    participant P as Pi Agent Core / Node
     participant K as Kimi API
     participant Q as Availability
     participant S as SchedulingService / MySQL
     U->>A: 需求 + 当前患者
-    A->>K: 规则 + 服务端会话 + 只读工具
-    K->>A: list_catalog / search_slots
+    A->>P: 规则 + 服务端会话 + 只读工具
+    P->>A: 请求模型回调
+    A->>K: 流式模型请求
+    K-->>A: 文字增量 + 完整工具调用
+    A-->>U: SSE文字增量
+    A-->>P: 完整模型响应
+    P->>A: list_catalog / search_slots
     A->>Q: 校验约束并计算连续空位
     Q-->>A: 最多三个候选
-    A->>K: 工具结果
+    A-->>P: 工具结果，继续模型循环
     A-->>U: 说明 + 服务端候选卡
     U->>A: 点击确认（候选ID）
     A->>S: 原始Booking + 稳定幂等键
@@ -52,18 +58,22 @@ sequenceDiagram
         S-->>U: Pending预约 + 审计 + Outbox
     else 已被占用
         S-->>A: slot_conflict
-        A->>K: 可信冲突事件 + 冻结的原约束
-        K->>A: 重新调用search_slots
+        A->>P: 可信冲突事件 + 冻结的原约束
+        P->>A: 模型回调后重新调用search_slots
         A->>Q: 原约束重新查询
         A-->>U: 新候选，必须再次确认
     end
 ```
 
-`KimiAgentModel` 用 HttpClient 调用兼容 Chat Completions 的 Kimi API，关闭 thinking，保留标准工具调用消息。未引入 Python 服务或额外 Agent SDK。
+多轮执行核心使用 `@earendil-works/pi-agent-core` 0.87.1（原`@mariozechner/pi-agent-core`的维护中包名）。每轮由.NET启动私有Node子进程，Pi `Agent`负责模型与工具循环、按顺序执行工具、维护本轮消息。.NET通过stdin/stdout提供模型与领域工具的回调，不新增公开服务端口。详见[运行时说明](../agent-runtime/README.md)和[ADR006](adr/006-pi-agent-runtime.md)。
+
+`KimiAgentModel`用HttpClient请求Kimi真实SSE（`stream:true`），45秒截止时间覆盖响应头及正文读取；按索引拼接工具调用参数，等合法完成标记后才交给Pi执行。不输出reasoning_content或不完整工具参数。浏览器通过POST + fetch ReadableStream接收文字增量、查询进度、执行记录和最终候选。只有完整result事件能启用候选卡。停止回复或断流会取消本轮并清空候选；确认期间结果未知时只能重试同一候选。
+
+本机需Node并执行`npm --prefix agent-runtime ci`；Docker镜像已包含Node和锁定的Pi依赖。最多同时运行四个Pi进程，子进程不继承模型密钥或数据库密码。
 
 模型只有 `list_catalog`、`search_slots` 两个工具，没有写工具。每轮搜索前必须查询目录。服务端对“仅预约室A”等明确排他资源短语绑定目录ID，防止模型漏传ResourceId而扩大资源范围；这是有限的短语保护，不是完整的自然语言解析器。候选时间使用带UTC偏移的ISO时间，前端同时接受 `Z` 和 `+00:00`，统一显示上海时间。`Availability` 用真实 SlotClaims 计算连续空位，模型不负责时间算术。后端保存候选的完整 Booking，确认请求只能提交候选 ID，不能替换患者、资源或时间。创建复用 SchedulingService 的锁、事务、幂等、审计和 Outbox。
 
-所有 Agent 接口要求 Scheduler；Cookie/CSRF 沿用现有中间件。Admin 不继承权限。会话绑定当前账号，并串行执行同一会话请求。首次确认后锁定该候选，结果不明时只能使用同一幂等键核实；成功后阻止同会话其他候选写入。外部错误正文、密钥及模型思考不进入用户执行记录。
+Agent接口允许Scheduler和Booker；Booker在目录、模型工具参数、候选和确认各层绑定本人PatientId。模拟冲突仅允许Scheduler；Cookie/CSRF 沿用现有中间件。Admin 不继承权限。会话绑定当前账号，并串行执行同一会话请求。首次确认后锁定该候选，结果不明时只能使用同一幂等键核实；成功后阻止同会话其他候选写入。外部错误正文、密钥及模型思考不进入用户执行记录。
 
 第一版会话仅存于单进程内存，最多128个，固定30分钟过期；重启或过期后不恢复聊天。此时先从预约列表核实已提交的结果，再开启新会话。数据库内已提交预约、审计和幂等记录仍保留。多实例部署前需将会话、候选及确认状态持久化，而不是直接扩容。模型解析自然语言仍可能出错，因此结构化确认卡和场景评估都是必要边界。
 
@@ -72,6 +82,8 @@ sequenceDiagram
 | 接口 | 用途 |
 |---|---|
 | `GET /api/agent/config` | 配置是否存在、模型名、时区、演示开关；不返回密钥 |
+| `POST /api/agent/messages/stream` | 推荐；请求体同messages，返回SSE事件流 |
+| `POST /api/agent/{sessionId}/confirm/stream` | 推荐；确认与冲突恢复均返回SSE |
 | `POST /api/agent/messages` | `{sessionId?, message, selectedPatientId?}`；服务端维护会话 |
 | `POST /api/agent/{sessionId}/confirm` | `{candidateId}`；精确确认，内置稳定幂等键 |
 | `POST /api/agent/{sessionId}/simulate-conflict` | `{candidateId}`；仅开发环境显式启用 |
@@ -80,9 +92,10 @@ sequenceDiagram
 
 ## 验证与演示
 
-自动化不依赖付费API：
+自动化不依赖付费API（但真实运行Pi核心）：
 
 ```bash
+npm --prefix agent-runtime ci && npm --prefix agent-runtime test
 ./scripts/test.sh
 ./scripts/http-tests.sh
 # 已启动 UI/API 且导出本机 .env 后
@@ -117,8 +130,18 @@ RUN_LIVE_AGENT=1 node tests/live-agent.mjs
 | 冲突查询超限 | 最多两次，不无限循环 |
 | 过期、非法时间、角色、CSRF | 服务端拒绝 |
 
-本次实测：后端全量46项通过；浏览器9项通过；独立HTTP测试库中的完整HTTP回归通过。真实浏览器曾发现模型漏传“仅预约室A”的资源约束，已加入服务端保护及回归测试。修复后真实 `kimi-k2.6` 通过缺失条件、多轮补充、候选约束、真实冲突恢复、再次确认、重放、周末无空位及直接写入诱导场景。复测中的真实消息轮次约3.0–11.6秒，属于本机单次样本，不能视为稳定延迟或通过率承诺。
+初版历史验证：后端全量46项通过；浏览器9项通过；独立HTTP测试库中的完整HTTP回归通过。真实浏览器曾发现模型漏传“仅预约室A”的资源约束，已加入服务端保护及回归测试。修复后真实 `kimi-k2.6` 通过缺失条件、多轮补充、候选约束、真实冲突恢复、再次确认、重放、周末无空位及直接写入诱导场景。复测中的真实消息轮次约3.0–11.6秒，属于本机单次样本，不能视为稳定延迟或通过率承诺。
 
 面试演示顺序：先说“帮当前患者约一下”看追问 → 补充未来工作日下午45分钟 → 展开工具记录 → 模拟第一个候选被抢占 → 确认原卡看冲突恢复 → 再次确认替代卡 → 查看预约详情中的人工前置任务、审计和同步记录。
 
 参考：[Kimi官方工具调用文档](https://platform.kimi.com/docs/guide/use-kimi-api-to-complete-tool-calls)、[官方API的Instant模式示例](https://github.com/MoonshotAI/Kimi-K2.5/blob/master/README.md#6-model-usage)。具体模型可用性以账户的 `/v1/models` 及实际请求验证。
+
+## 个人账号与流式验证
+
+SSE事件：progress、session、message_start、delta、trace、result、error。已开始SSE后的错误由error事件携带code/status，客户端不得只凭HTTP200判断成功。HTTP头仍用于认证/权限/CSRF和限流失败。新一轮模型响应的message_start替换当前临时文字；最终result保存正式回复并展示候选。
+
+`tests/live-agent-stream.mjs`在显式设置RUN_LIVE_AGENT=1时使用真实Kimi，为独立测试账号查询、确认、重放并取消一笔虚构预约。应将API_URL指向隔离测试实例；脚本输出只含事件计数与耗时，不含凭据。`frontend/e2e/streaming.spec.ts`使用真实分段HTTP响应，验证结果返回前已经显示文字、尚无可确认卡片，以及截断流恢复。
+
+参考：[Pi官方Agent Core](https://github.com/earendil-works/pi/tree/main/packages/agent)、[Kimi官方流式工具调用注意事项](https://www.kimi.com/help/kimi-api/api-troubleshooting)。
+
+当前版本本地验证：后端66项、Pi运行时3项、浏览器13项和完整HTTP回归通过。真实Kimi个人账号流式联调收到61个文字增量，并通过本人归属、显式确认、重复确认仅创建一次的检查。完整证据与限制见[验收记录](acceptance.md)。
