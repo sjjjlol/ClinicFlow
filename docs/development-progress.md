@@ -93,3 +93,10 @@ Local verification: 59 backend tests, full HTTP suite on an isolated database, 1
 Registered users now have the appointment assistant in 我的预约. Pi Agent Core 0.87.1 owns the conversation/tool loop through a private Node worker; .NET retains model credentials, scoped availability, explicit booking confirmation and transaction boundaries. Both message and confirmation routes support incremental SSE text, progress, traces and final results. Interrupted streams never expose partial candidate cards.
 
 Local verification: 66 backend tests, 3 real Pi runtime tests, the full HTTP suite and 13 Chrome browser tests passed. A genuine Kimi run on the isolated database produced 61 text chunks (first text 6,134 ms, complete proposal 7,289 ms), queried only the account's profile, created only after confirmation and replayed the same appointment on repeated confirmation. The test appointment was cancelled afterward. These timings describe one run, not a performance guarantee. Frontend, publish and Docker builds passed. Updated localhost:5080, checked database readiness, staff authentication, Pi/streaming configuration and loading Pi inside the deployed container. Stopped the isolated 5088 process. No remote CI run or public deployment was performed.
+
+
+## DICOMweb extension — 2026-09-26
+
+User-approved scope: pre-visit associations with existing imaging studies, a reused archive/viewer, strict external patient mapping, employee-only access, multi-study links/unlink/audit, failure validation, and Chinese learning/interview materials. Four staged local commits; no push or remote CI execution requested. Current Completed functionality supersedes the earlier M8 note describing it as a future independent exercise.
+
+See docs/imaging/README.md and docs/imaging/verification.md for the final implementation, test results and precise limitations. Orthanc/Stone provide archive/rendering; ClinicFlow supplies the .NET business integration. FHIR scope is unchanged.

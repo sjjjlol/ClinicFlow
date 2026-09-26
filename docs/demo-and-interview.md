@@ -10,7 +10,7 @@
 
 1:50–2:30：展示受控并发测试结果或L1两次写入时间线。讲清唯一约束、资源父锁、业务Version与请求Key各解决什么问题。
 
-2:30–3:00：展示已提交的升级恢复记录与FHIR范围。说明下一步是自己实现Completed，并明确哪些内容已经亲自修改、哪些仍是阅读理解。
+2:30–3:00：展示已提交的升级恢复记录与FHIR范围。说明注册与Completed已经实现，并明确哪些内容已经亲自修改、哪些仍是阅读理解。
 
 ## 90-second project introduction（练习稿）
 
@@ -44,3 +44,8 @@ I validate the important failures with real MySQL tests, browser workflows, and 
 A client could act on an appointment snapshot read before another request moved it to a different resource. The mutation now locks resources in a stable order, locks the appointment, and revalidates the resource and business version before changing any claims. Stale requests receive a conflict that the UI can explain.
 
 Validation includes independent MySQL connections, a controlled pre-read barrier, self-overlapping moves, and a fault injected after releasing the original claims. Rollback preserves the original booking, audit, and Outbox state.
+
+
+## DICOM 扩展演示
+
+新增影像演示、英文介绍、岗位要求映射与追问见 [医疗信息化面试材料](imaging/interview.md)。先运行 [影像环境](imaging/operations.md)，再从预约详情查询、关联并打开患者已有影像。不要将使用 Orthanc/Stone 表述成自己开发了归档服务和渲染引擎。

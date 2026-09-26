@@ -38,3 +38,17 @@
 Orthanc 容器健康检查通过；STOW-RS 成功导入 18 个实例；已实际获取 Stone 的入口与配置。macOS 当前 Python 的证书链需通过 `PIP_CERT=/etc/ssl/cert.pem ./scripts/imaging-up.sh` 指定系统 CA；没有关闭 TLS 校验。若其他环境证书正常，直接运行即可。
 
 第二阶段设计与代码入口见 [设计与代码导读](design.md)。
+
+## 学习顺序
+
+1. [DICOM 从零学习与两周路线](learning-guide.md)：标签、标识、层级、三类 Web 服务与 .NET 实践。
+2. [设计与代码导读](design.md)：业务边界、事务、授权、错误与标准支持范围。
+3. [运行与排障](operations.md)：启动、分层测试、受控停机、两项真实协议互通问题。
+4. [面试材料](interview.md)：三分钟演示、英文介绍、追问、STAR 与岗位要求映射。
+5. [实际验证记录](verification.md)：验收证据和没有验证的范围。
+
+## 实际运行截图
+
+![Stone显示合成DICOM像素](images/viewer.png)
+
+![预约中的影像关联、序列与下载](images/panel.png)

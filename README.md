@@ -96,3 +96,15 @@ CI independently starts the container from fresh volumes, restores locked depend
 After login, generated OpenAPI is available at `/api/openapi/v1.json`.
 
 Limits: no real hospital integration, dosage calculation, treatment planning, device control, password recovery/SSO, message broker or full FHIR conformance. No automatic retention/cleanup for audit, idempotency or receipts. The mock's built-in Node SQLite API is experimental in the pinned runtime. Lab timings are reproducible laptop observations, not production gains. Database startup migrations and seeded accounts are for single-instance local demonstration.
+
+
+## DICOMweb imaging extension
+
+Staff can associate existing studies with an appointment, inspect series/instances, download DICOM files and open a reused Stone viewer. ClinicFlow enforces patient identity, role access and association checks; Orthanc provides the archive. All imaging fixtures are synthetic.
+
+```bash
+./scripts/imaging-up.sh
+docker compose --profile full --profile imaging up -d --build --wait app
+```
+
+Start learning from the [影像模块学习入口](docs/imaging/README.md), then [DICOM入门与两周路线](docs/imaging/learning-guide.md), [设计与代码导读](docs/imaging/design.md), [运行与排障](docs/imaging/operations.md), [面试材料](docs/imaging/interview.md) and [实际验证记录](docs/imaging/verification.md). This extension is locally committed in stages; no remote CI success is implied.

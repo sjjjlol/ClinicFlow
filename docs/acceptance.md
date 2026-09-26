@@ -55,3 +55,19 @@
 | A29 | SSE增量输出、中断、确认重放 | KimiModelTests、G17、http-agent.mjs、streaming.spec.ts |
 
 本地后端66项、Pi运行时3项、完整HTTP回归、Chrome浏览器13项通过。浏览器使用真实分块HTTP响应验证完整结果之前已显示文字；模型解析测试覆盖分块UTF-8、工具参数拼接和不完整流拒绝。真实Kimi联调在隔离数据库收到61个文字增量，确认前无预约、确认后仅本人预约、重复确认仅一条记录，测试预约已取消。构建和localhost:5080部署冒烟通过；本次没有远程CI结果。
+
+
+## 影像扩展验收
+
+| 条目 | 实现与证据 |
+|---|---|
+| I01 可重复合成数据与标准导入 | imaging/seed.py；18实例、6序列、3检查；STOW-RS |
+| I02 查询/多检查关联/去重 | ImagingService、MySQL复合键；HTTP与并发测试 |
+| I03 身份缺失、错配、混合实例拒绝 | ImagingTests/DicomWebTests；真实跨患者UID拒绝 |
+| I04 权限和CSRF | HTTP测试覆盖匿名、Booker、Admin、TaskOperator及缺失CSRF |
+| I05 序列/实例、原文件和实际显示 | HTTP DICM封装检查；Playwright像素请求、画布与截图 |
+| I06 解除与审计 | 解除不删除归档，成功审计原子写入；撤销后的读取拒绝 |
+| I07 外部故障与恢复 | http-imaging-outage.mjs；503请求标识、本地解除、恢复查询 |
+| I08 文档、范围与CI | docs/imaging；CI含真实影像服务与故障实验；实际结果见验证记录 |
+
+[影像实际验证记录](imaging/verification.md)区分已运行结果、环境限制和未执行的远端CI。
