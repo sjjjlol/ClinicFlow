@@ -6,10 +6,22 @@ export class Client {
   async request(path,body,key){
     const res=await fetch(base+path,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json','Cookie':[...this.cookies].map(([k,v])=>`${k}=${v}`).join('; '),'X-CSRF-TOKEN':this.token,...(key?{'Idempotency-Key':key}:{})},body:body===undefined?undefined:JSON.stringify(body)});
     for(const cookie of res.headers.getSetCookie()){const [kv]=cookie.split(';'); const at=kv.indexOf('=');this.cookies.set(kv.slice(0,at),kv.slice(at+1));}
-    const text=await res.text();return {status:res.status,body:text?JSON.parse(text):null};
+    const text=await res.text();return {status:res.status,body:text?JSON.parse(text):null,retryAfter:res.headers.get('retry-after')};
   }
   async csrf(){this.token=(await this.request('/api/auth/csrf')).body.token;}
-  async login(username='scheduler'){await this.csrf();const r=await this.request('/api/auth/login',{username,password:process.env.DEMO_PASSWORD});assert.equal(r.status,200);await this.csrf();return this;}
+  async login(username='scheduler'){
+    await this.csrf();
+    for(let attempt=0;attempt<2;attempt++){
+      const r=await this.request('/api/auth/login',{username,password:process.env.DEMO_PASSWORD});
+      if(r.status===429 && attempt===0){
+        const seconds=Number(r.retryAfter??60);
+        await new Promise(resolve=>setTimeout(resolve,(Number.isFinite(seconds)?Math.min(60,Math.max(0,seconds)):60)*1000+100));
+        continue;
+      }
+      assert.equal(r.status,200);await this.csrf();return this;
+    }
+    throw new Error('Login retry exhausted');
+  }
 }
 if(fileURLToPath(import.meta.url)===process.argv[1]){
  const c=new Client();assert.equal((await c.request('/api/patients')).status,401);

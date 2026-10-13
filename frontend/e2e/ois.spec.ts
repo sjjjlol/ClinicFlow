@@ -39,6 +39,7 @@ test("OIS roles cooperate on signed prescription, plan review and experiment sch
   await confirm(page);
   await expect(care.getByText("演示放疗处方", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "退出登录", exact: true }).click();
+  await expect(page.getByLabel("账号", { exact: true })).toBeVisible();
   await login(page, "physicist");
   await page.getByRole("button", { name: "◎ 患者与诊疗", exact: true }).click();
   care = page
@@ -51,6 +52,7 @@ test("OIS roles cooperate on signed prescription, plan review and experiment sch
   await confirm(page);
   await expect(care.getByText("待诊疗审核", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "退出登录", exact: true }).click();
+  await expect(page.getByLabel("账号", { exact: true })).toBeVisible();
   await login(page, "clinician");
   await page.getByRole("button", { name: "◎ 患者与诊疗", exact: true }).click();
   care = page
