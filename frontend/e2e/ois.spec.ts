@@ -10,6 +10,41 @@ async function login(page: Page, role: string) {
   await submitLogin(page);
   await expect(page.getByRole("heading", { level: 1 })).toContainText("工作台");
 }
+// Pick an actually free slot so rerunning against a persistent demo DB cannot collide.
+async function freeDay(page: Page, year: number, resource: string) {
+  const response = await page.request.get("/api/ois/workspace");
+  expect(response.ok()).toBeTruthy();
+  const state = await response.json();
+  const date = new Date(Date.UTC(year, 0, 1));
+  while (
+    state.reservations.some(
+      ({
+        reservation: r,
+      }: {
+        reservation: {
+          status: string;
+          resourceId: string;
+          patientId: number | null;
+          startUtc: string;
+          endUtc: string;
+        };
+      }) => {
+        const start = new Date(
+          date.toISOString().slice(0, 10) + "T09:00:00+08:00",
+        );
+        return (
+          r.status !== "Cancelled" &&
+          (r.resourceId === resource || r.patientId === 1) &&
+          new Date(r.startUtc).getTime() < start.getTime() + 1800000 &&
+          new Date(r.endUtc) > start
+        );
+      },
+    )
+  )
+    date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
 async function confirm(page: Page) {
   await page.getByRole("button", { name: "预览并核对", exact: true }).click();
   await page.getByRole("button", { name: "确认提交", exact: true }).click();
@@ -61,11 +96,7 @@ test("OIS roles cooperate on signed prescription, plan review and experiment sch
   await care.getByRole("button", { name: "审核此版本", exact: true }).click();
   await confirm(page);
   await care.getByRole("button", { name: "安排物理实验", exact: true }).click();
-  const day = new Date(
-    Date.UTC(2037, 0, 1) + Math.floor(Math.random() * 300) * 86400000,
-  )
-    .toISOString()
-    .slice(0, 10);
+  const day = await freeDay(page, 2037, "linac-b");
   await page.getByLabel("开始时间（上海）").fill(day + "T09:00");
   await page.getByLabel("结束时间（上海）").fill(day + "T09:30");
   await confirm(page);
@@ -81,11 +112,7 @@ test("OIS single booking preview, cancellation, restore and week calendar", asyn
   page,
 }) => {
   await login(page, "scheduler");
-  const day = new Date(
-    Date.UTC(2038, 0, 1) + Math.floor(Math.random() * 300) * 86400000,
-  )
-    .toISOString()
-    .slice(0, 10);
+  const day = await freeDay(page, 2038, "clinician");
   await page.getByRole("button", { name: "＋ 门诊预约", exact: true }).click();
   await page.getByLabel("开始时间（上海）").fill(day + "T09:00");
   await page.getByLabel("结束时间（上海）").fill(day + "T09:30");

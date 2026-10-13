@@ -13,7 +13,9 @@ await send(clinician,'prescribe',{id:caseId,version:1,diagnosis:'模拟诊断',t
 const planId=await send(physicist,'plan',{caseId,version:2,resourceId:'linac-a',text:'模拟计划'});
 await send(clinician,'review',{id:planId,version:1});
 assert.equal((await clinician.request(path+'validate',{id:'forged',version:1,outcome:'Passed',text:'禁止代签'},crypto.randomUUID())).status,403);
-const base=new Date(Date.UTC(2036,0,1)+Math.floor(Math.random()*300)*86400000);
+const occupied=(await scheduler.request('/api/ois/workspace')).body.reservations.map(x=>x.reservation);
+const base=new Date(Date.UTC(2036,0,1));
+while(occupied.some(r=>r.status!=='Cancelled' && (r.resourceId==='linac-a'||r.patientId===1) && new Date(r.startUtc)<new Date(+base+1800000) && new Date(r.endUtc)>base)) base.setUTCDate(base.getUTCDate()+1);
 const booking={kind:'Treatment',patientId:1,caseId,resourceId:'linac-a',startUtc:base.toISOString(),endUtc:new Date(+base+1800000).toISOString()};
 const key=crypto.randomUUID();const id=await send(scheduler,'book',booking,key);
 assert.equal(await send(scheduler,'book',booking,key),id);
