@@ -87,7 +87,7 @@ source .env
 set +a
 node tests/http-ois.mjs
 # 浏览器测试，启动 Vite 后
-npm --prefix frontend exec -- playwright install chromium
+(cd frontend && npx playwright install chromium)
 npm --prefix frontend run test:e2e -- ois.spec.ts
 ```
 
