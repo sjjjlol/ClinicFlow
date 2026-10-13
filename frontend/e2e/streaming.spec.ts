@@ -1,19 +1,31 @@
 import { test, expect } from "@playwright/test";
-import { createServer } from "node:http";
+import { createServer, request as proxyRequest } from "node:http";
 
 test("Booker sees real incremental text before final cards, with a locked personal profile", async ({
   page,
 }) => {
   let finish: (() => void) | undefined;
   const server = createServer((request, response) => {
-    response.setHeader("Access-Control-Allow-Origin", "*");
-    response.setHeader(
-      "Access-Control-Allow-Headers",
-      "content-type,x-csrf-token,accept",
-    );
-    if (request.method === "OPTIONS") {
-      response.writeHead(204);
-      response.end();
+    // Serve the page and streaming fixture on one origin, like the actual app.
+    // Rewriting a same-origin fetch to another port can fail Chromium CORS checks.
+    if (request.url !== "/api/agent/messages/stream") {
+      const base = String(test.info().project.use.baseURL);
+      const upstream = proxyRequest(
+        new URL(request.url || "/", base),
+        {
+          method: request.method,
+          headers: request.headers,
+        },
+        (incoming) => {
+          response.writeHead(incoming.statusCode || 502, incoming.headers);
+          incoming.pipe(response);
+        },
+      );
+      upstream.on("error", () => {
+        response.writeHead(502);
+        response.end();
+      });
+      request.pipe(upstream);
       return;
     }
     response.writeHead(200, { "Content-Type": "text/event-stream" });
@@ -72,10 +84,7 @@ test("Booker sees real incremental text before final cards, with a locked person
     await page.route("**/api/agent/config", (r) =>
       r.fulfill({ json: { configured: true, demoEnabled: false } }),
     );
-    await page.route("**/api/agent/messages/stream", (r) =>
-      r.continue({ url: `http://127.0.0.1:${address.port}/stream` }),
-    );
-    await page.goto("/legacy");
+    await page.goto(`http://127.0.0.1:${address.port}/legacy`);
     await expect(
       page.getByRole("heading", { name: "我的预约", exact: true }),
     ).toBeVisible();
