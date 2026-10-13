@@ -200,6 +200,425 @@ namespace ClinicFlow.Migrations
                     b.ToTable("SyncAttempt");
                 });
 
+            modelBuilder.Entity("ClinicFlow.Ois.CareCase", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)");
+
+                    b.Property<string>("CurrentPlanId")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("CurrentPrescriptionId")
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("PatientId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PatientId");
+
+                    b.ToTable("CareCase");
+                });
+
+            modelBuilder.Entity("ClinicFlow.Ois.OisAudit", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime>("AtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("CorrelationId")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Detail")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("TargetId")
+                        .IsRequired()
+                        .HasColumnType("varchar(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TargetId", "Id");
+
+                    b.ToTable("OisAudit");
+                });
+
+            modelBuilder.Entity("ClinicFlow.Ois.OisGate", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.HasKey("Id");
+
+                    b.ToTable("OisGate");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1
+                        });
+                });
+
+            modelBuilder.Entity("ClinicFlow.Ois.OisResource", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)");
+
+                    b.Property<bool>("Available")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("OisResource");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = "clinician",
+                            Available = true,
+                            Kind = "Clinician",
+                            Name = "诊疗人员 · 门诊",
+                            Reason = "",
+                            Version = 1
+                        },
+                        new
+                        {
+                            Id = "linac-a",
+                            Available = true,
+                            Kind = "Machine",
+                            Name = "直线加速器 A（模拟）",
+                            Reason = "",
+                            Version = 1
+                        },
+                        new
+                        {
+                            Id = "linac-b",
+                            Available = true,
+                            Kind = "Machine",
+                            Name = "直线加速器 B（模拟）",
+                            Reason = "",
+                            Version = 1
+                        });
+                });
+
+            modelBuilder.Entity("ClinicFlow.Ois.OisTask", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("ReadBy")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Resolution")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ResolvedBy")
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime?>("ResolvedUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("TargetId")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("OisTask");
+                });
+
+            modelBuilder.Entity("ClinicFlow.Ois.Prescription", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)");
+
+                    b.Property<string>("CaseId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Diagnosis")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("SignedBy")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime>("SignedUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("SupersedesId")
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CaseId");
+
+                    b.ToTable("Prescription");
+                });
+
+            modelBuilder.Entity("ClinicFlow.Ois.Reservation", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)");
+
+                    b.Property<string>("CaseId")
+                        .HasColumnType("varchar(36)");
+
+                    b.Property<DateTime>("EndUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<int?>("PatientId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PlanId")
+                        .HasColumnType("varchar(36)");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ResourceId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)");
+
+                    b.Property<DateTime>("StartUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CaseId");
+
+                    b.HasIndex("PlanId");
+
+                    b.HasIndex("PatientId", "StartUtc");
+
+                    b.HasIndex("ResourceId", "StartUtc");
+
+                    b.ToTable("Reservation");
+                });
+
+            modelBuilder.Entity("ClinicFlow.Ois.TreatmentDelivery", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)");
+
+                    b.Property<string>("FinishedBy")
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime?>("FinishedUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("MachineId")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Note")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("PlanId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)");
+
+                    b.Property<string>("ReservationId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)");
+
+                    b.Property<string>("StartedBy")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime>("StartedUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlanId");
+
+                    b.HasIndex("ReservationId")
+                        .IsUnique();
+
+                    b.ToTable("TreatmentDelivery");
+                });
+
+            modelBuilder.Entity("ClinicFlow.Ois.TreatmentPlan", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)");
+
+                    b.Property<string>("Attachment")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("CaseId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)");
+
+                    b.Property<string>("FailureType")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("MachineId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)");
+
+                    b.Property<string>("PrescriptionId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)");
+
+                    b.Property<string>("RegisteredBy")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime>("RegisteredUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("ReviewedBy")
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime?>("ReviewedUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ValidatedBy")
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime?>("ValidatedUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Validation")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ValidationNote")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MachineId");
+
+                    b.HasIndex("PrescriptionId");
+
+                    b.HasIndex("CaseId", "Revision")
+                        .IsUnique();
+
+                    b.ToTable("TreatmentPlan");
+                });
+
             modelBuilder.Entity("ClinicFlow.Patient", b =>
                 {
                     b.Property<int>("Id")
@@ -508,6 +927,84 @@ namespace ClinicFlow.Migrations
                     b.HasOne("ClinicFlow.Scheduling.Appointment", null)
                         .WithMany()
                         .HasForeignKey("AppointmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ClinicFlow.Ois.CareCase", b =>
+                {
+                    b.HasOne("ClinicFlow.Patient", null)
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ClinicFlow.Ois.Prescription", b =>
+                {
+                    b.HasOne("ClinicFlow.Ois.CareCase", null)
+                        .WithMany()
+                        .HasForeignKey("CaseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ClinicFlow.Ois.Reservation", b =>
+                {
+                    b.HasOne("ClinicFlow.Ois.CareCase", null)
+                        .WithMany()
+                        .HasForeignKey("CaseId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ClinicFlow.Patient", null)
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ClinicFlow.Ois.TreatmentPlan", null)
+                        .WithMany()
+                        .HasForeignKey("PlanId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("ClinicFlow.Ois.OisResource", null)
+                        .WithMany()
+                        .HasForeignKey("ResourceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ClinicFlow.Ois.TreatmentDelivery", b =>
+                {
+                    b.HasOne("ClinicFlow.Ois.TreatmentPlan", null)
+                        .WithMany()
+                        .HasForeignKey("PlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ClinicFlow.Ois.Reservation", null)
+                        .WithMany()
+                        .HasForeignKey("ReservationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ClinicFlow.Ois.TreatmentPlan", b =>
+                {
+                    b.HasOne("ClinicFlow.Ois.CareCase", null)
+                        .WithMany()
+                        .HasForeignKey("CaseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ClinicFlow.Ois.OisResource", null)
+                        .WithMany()
+                        .HasForeignKey("MachineId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("ClinicFlow.Ois.Prescription", null)
+                        .WithMany()
+                        .HasForeignKey("PrescriptionId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

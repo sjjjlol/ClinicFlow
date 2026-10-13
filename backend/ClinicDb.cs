@@ -28,6 +28,7 @@ public class ClinicDb(DbContextOptions<ClinicDb> options) : DbContext(options)
     protected override void OnModelCreating(ModelBuilder b)
     {
         ImagingModel.Configure(b);
+        ClinicFlow.Ois.OisModel.Configure(b);
         b.Entity<DemoUser>()
             .HasOne(x => x.Patient)
             .WithMany()
