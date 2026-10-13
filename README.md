@@ -1,3 +1,5 @@
+> **OIS 重构分支**：已确认的产品范围与阶段计划见 [OIS MVP](docs/ois-mvp.md)。下文保留原预约系统说明，当前实现状态以 OIS 文档为准。
+
 # ClinicFlow
 
 [![CI](https://github.com/sjjjlol/ClinicFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/sjjjlol/ClinicFlow/actions/workflows/ci.yml)

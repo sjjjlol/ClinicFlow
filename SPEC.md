@@ -1,3 +1,5 @@
+> **OIS 重构分支**：已确认的产品范围与阶段计划见 [OIS MVP](docs/ois-mvp.md)。下文保留原预约系统说明，当前实现状态以 OIS 文档为准。
+
 # ClinicFlow 开发规格
 
 状态：本文保留 2026-09-23 原始需求及后续范围变更。主线与扩展已实现；当前完成度以[验收记录](docs/acceptance.md#current-status)为准，常见阅读任务见[导读地图](docs/README.md)。
