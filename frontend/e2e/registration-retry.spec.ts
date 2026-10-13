@@ -26,7 +26,7 @@ test("registration honors Retry-After before retrying the unchanged form", async
     retriedAt = Date.now();
     await route.continue();
   });
-  await page.goto("/");
+  await page.goto("/legacy");
   await page.getByRole("button", { name: "没有账号？注册预约账号" }).click();
   await page.getByLabel("账号", { exact: true }).fill(username);
   await page.getByLabel("预约姓名", { exact: true }).fill("限流回归预约者");

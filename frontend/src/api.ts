@@ -130,6 +130,12 @@ export async function streamApi<T>(
 export type User = {
   patientId?: number | null;
   name: string;
-  role: "Scheduler" | "TaskOperator" | "Admin" | "Booker";
+  role:
+    | "Scheduler"
+    | "Clinician"
+    | "Physicist"
+    | "TaskOperator"
+    | "Admin"
+    | "Booker";
 };
 export type Catalog = { id: number; name: string };

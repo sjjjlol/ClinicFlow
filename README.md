@@ -1,5 +1,17 @@
-> **OIS 重构分支**：已确认的产品范围与阶段计划见 [OIS MVP](docs/ois-mvp.md)。下文保留原预约系统说明，当前实现状态以 OIS 文档为准。
+# ClinicFlow OIS
 
+放疗协作演示系统：预约人员、诊疗人员和物理师分别使用工作台，通过单次预约、版本化处方与计划、物理实验和治疗执行形成闭环。
+
+- [已确认 MVP 范围与设计](docs/ois-mvp.md)
+- [OIS 运行、接口与验收](docs/ois-runbook.md)
+- 主入口 `/`；旧版预约、影像与故障实验保留在 `/legacy`。
+- 默认不加载 AI Agent，运行镜像不包含 Node/Agent 运行时。
+
+快速运行：`./scripts/start.sh`，打开 `http://localhost:5080`。三个业务账号为 `scheduler`、`clinician`、`physicist`，密码来自本地 `.env` 的 `DEMO_PASSWORD`。只使用虚构患者与模拟临床数据。
+
+以下为原预约系统的历史说明；OIS 范围和行为以以上文档为准。
+
+---
 # ClinicFlow
 
 [![CI](https://github.com/sjjjlol/ClinicFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/sjjjlol/ClinicFlow/actions/workflows/ci.yml)

@@ -1,7 +1,7 @@
 import { submitLogin } from "./support";
 import { test, expect } from "@playwright/test";
 test("A01 login and Apple-style workspace", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/legacy");
   await page.getByLabel("账号", { exact: true }).fill("scheduler");
   await expect(
     page.getByRole("heading", { name: "让预约，有条不紊。" }),
@@ -23,7 +23,7 @@ test("A01 login and Apple-style workspace", async ({ page }) => {
   ).toBeVisible();
 });
 test("A02 create, detail and actionable conflict", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/legacy");
   await page.getByLabel("账号", { exact: true }).fill("scheduler");
   await page
     .getByLabel("密码", { exact: true })
@@ -47,7 +47,7 @@ test("A02 create, detail and actionable conflict", async ({ page }) => {
   await page.screenshot({ path: "test-results/conflict.png", fullPage: true });
 });
 test("A06/A12 reschedule and cancel from detail", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/legacy");
   await page.getByLabel("账号", { exact: true }).fill("scheduler");
   await page
     .getByLabel("密码", { exact: true })
@@ -89,7 +89,7 @@ test("A21 complete collaborative appointment lifecycle", async ({ page }) => {
       page.getByRole("heading", { name: "预约工作台", exact: true }),
     ).toBeVisible();
   }
-  await page.goto("/");
+  await page.goto("/legacy");
   await page.getByLabel("账号", { exact: true }).fill("scheduler");
   await login("scheduler");
   await page.getByRole("button", { name: "新建预约" }).click();
@@ -112,7 +112,7 @@ test("A21 complete collaborative appointment lifecycle", async ({ page }) => {
   await page.getByRole("button", { name: "关闭详情" }).click();
   await page.getByRole("button", { name: "退出登录" }).click();
   await login("taskoperator");
-  await page.goto("/?appointment=" + a.id);
+  await page.goto("/legacy?appointment=" + a.id);
   await page
     .getByRole("button", { name: "完成 资料核对", exact: true })
     .click();
@@ -153,7 +153,7 @@ test("A21 complete collaborative appointment lifecycle", async ({ page }) => {
 test("Admin observes persistent sync queue and attempt history", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/legacy");
   await page.getByLabel("账号", { exact: true }).fill("scheduler");
   await page.getByLabel("账号", { exact: true }).fill("admin");
   await page
@@ -177,7 +177,7 @@ test("Admin observes persistent sync queue and attempt history", async ({
 });
 test("Mobile workspace and keyboard dialog dismissal", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/");
+  await page.goto("/legacy");
   await page.getByLabel("账号", { exact: true }).fill("scheduler");
   await page
     .getByLabel("密码", { exact: true })
@@ -227,7 +227,7 @@ test("Sync failure UI preserves retry identity after a network error", async ({
       await route.fulfill({ json: {} });
     }
   });
-  await page.goto("/");
+  await page.goto("/legacy");
   await page.getByLabel("账号", { exact: true }).fill("scheduler");
   await page.getByLabel("账号", { exact: true }).fill("admin");
   await page

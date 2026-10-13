@@ -75,7 +75,7 @@ test("Booker sees real incremental text before final cards, with a locked person
     await page.route("**/api/agent/messages/stream", (r) =>
       r.continue({ url: `http://127.0.0.1:${address.port}/stream` }),
     );
-    await page.goto("/");
+    await page.goto("/legacy");
     await expect(
       page.getByRole("heading", { name: "我的预约", exact: true }),
     ).toBeVisible();
@@ -142,7 +142,7 @@ test("a truncated stream never exposes actionable candidates", async ({
       body: 'data: {"type":"delta","text":"未完成的回复"}\n\n',
     }),
   );
-  await page.goto("/");
+  await page.goto("/legacy");
   await page.getByLabel("预约需求").fill("下周一下午45分钟");
   await page.getByRole("button", { name: "发送需求", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("未收到完整结果");

@@ -12,7 +12,7 @@ export function useDialogFocus(key: string | null, close: () => void) {
     const focusable = () =>
       Array.from(
         dialog.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), input:not([disabled]), select:not([disabled]), a[href], [tabindex="0"]',
+          'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex="0"]',
         ),
       );
     focusable()[0]?.focus();

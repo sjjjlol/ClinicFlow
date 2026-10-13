@@ -360,6 +360,11 @@ public class OisWorkflow
                     "患者或机器仍有未结束的治疗"
                 );
                 care = Get(Cases, booking.CaseId!);
+                Need(
+                    c.PlanId == care.CurrentPlanId,
+                    "plan_changed",
+                    "计划版本已变更，请重新核对当前计划"
+                );
                 var delivery = new TreatmentDelivery
                 {
                     ReservationId = booking.Id,

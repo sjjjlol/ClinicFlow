@@ -95,7 +95,12 @@ public class OisRulesTests
             Run(
                 w,
                 "start",
-                new(Id: booking.Id, Version: booking.Version, IdentityChecked: true),
+                new(
+                    Id: booking.Id,
+                    Version: booking.Version,
+                    IdentityChecked: true,
+                    PlanId: w.Cases.Single().CurrentPlanId!
+                ),
                 "Clinician",
                 now.Date.AddHours(10)
             )
@@ -105,7 +110,12 @@ public class OisRulesTests
         var id = Run(
             w,
             "start",
-            new(Id: booking.Id, Version: booking.Version, IdentityChecked: true),
+            new(
+                Id: booking.Id,
+                Version: booking.Version,
+                IdentityChecked: true,
+                PlanId: w.Cases.Single().CurrentPlanId!
+            ),
             "Clinician",
             now.Date.AddHours(10)
         );
@@ -131,7 +141,12 @@ public class OisRulesTests
         var id = Run(
             w,
             "start",
-            new(Id: booking.Id, Version: booking.Version, IdentityChecked: true),
+            new(
+                Id: booking.Id,
+                Version: booking.Version,
+                IdentityChecked: true,
+                PlanId: w.Cases.Single().CurrentPlanId!
+            ),
             "Clinician",
             now.Date.AddHours(10)
         );
@@ -320,7 +335,12 @@ public class OisRulesTests
         var id = Run(
             w,
             "start",
-            new(Id: r.Id, Version: r.Version, IdentityChecked: true),
+            new(
+                Id: r.Id,
+                Version: r.Version,
+                IdentityChecked: true,
+                PlanId: w.Cases.Single().CurrentPlanId!
+            ),
             "Clinician",
             now.Date.AddHours(10)
         );
@@ -397,6 +417,136 @@ public class OisDatabaseTests : IAsyncLifetime
             StartUtc: new DateTimeOffset(2035, 1, 1, 10, 0, 0, TimeSpan.Zero),
             EndUtc: new DateTimeOffset(2035, 1, 1, 11, 0, 0, TimeSpan.Zero)
         );
+
+    sealed class Clock : TimeProvider
+    {
+        public DateTimeOffset Now = new(2030, 1, 1, 8, 0, 0, TimeSpan.Zero);
+
+        public override DateTimeOffset GetUtcNow() => Now;
+    }
+
+    [Fact]
+    public async Task Persisted_failure_revision_release_and_interruption_close_the_loop()
+    {
+        var clock = new Clock();
+        async Task<string> Act(string op, OisCommand input, string role)
+        {
+            await using var db = fixture.Db();
+            var result = await new OisService(db, clock).Execute(
+                op,
+                input,
+                role.ToLowerInvariant(),
+                role,
+                Guid.NewGuid().ToString(),
+                "full-loop",
+                default
+            );
+            return System
+                .Text.Json.JsonSerializer.SerializeToElement(result)
+                .GetProperty("targetId")
+                .GetString()!;
+        }
+        var care = await Act("case", new(PatientId: 1, Text: "闭环"), "Clinician");
+        await Act(
+            "prescribe",
+            new(Id: care, Version: 1, Diagnosis: "模拟诊断", Text: "模拟处方"),
+            "Clinician"
+        );
+        var p1 = await Act(
+            "plan",
+            new(CaseId: care, Version: 2, ResourceId: "linac-a", Text: "v1"),
+            "Physicist"
+        );
+        var exp1 = await Act(
+            "book",
+            new(
+                Kind: "Experiment",
+                PlanId: p1,
+                ResourceId: "linac-a",
+                StartUtc: clock.Now.AddHours(1),
+                EndUtc: clock.Now.AddHours(1).AddMinutes(15)
+            ),
+            "Clinician"
+        );
+        var treatment = await Act(
+            "book",
+            new(
+                Kind: "Treatment",
+                PatientId: 1,
+                CaseId: care,
+                ResourceId: "linac-a",
+                StartUtc: clock.Now.AddHours(2),
+                EndUtc: clock.Now.AddHours(3)
+            ),
+            "Scheduler"
+        );
+        clock.Now = clock.Now.AddHours(1);
+        await Act(
+            "validate",
+            new(Id: exp1, Version: 1, Outcome: "Failed", FailureType: "Plan", Text: "计划需修订"),
+            "Physicist"
+        );
+        var p2 = await Act(
+            "plan",
+            new(CaseId: care, Version: 3, ResourceId: "linac-a", Text: "v2", Reason: "修订"),
+            "Physicist"
+        );
+        await Act("review", new(Id: p2, Version: 1), "Clinician");
+        var exp2 = await Act(
+            "book",
+            new(
+                Kind: "Experiment",
+                PlanId: p2,
+                ResourceId: "linac-a",
+                StartUtc: clock.Now.AddMinutes(15),
+                EndUtc: clock.Now.AddMinutes(30)
+            ),
+            "Clinician"
+        );
+        clock.Now = clock.Now.AddMinutes(15);
+        await Act(
+            "validate",
+            new(Id: exp2, Version: 1, Outcome: "Passed", Text: "模拟通过"),
+            "Physicist"
+        );
+        clock.Now = clock.Now.AddMinutes(45);
+        Assert.Equal(
+            "plan_changed",
+            (
+                await Assert.ThrowsAsync<BusinessException>(() =>
+                    Act(
+                        "start",
+                        new(Id: treatment, Version: 1, PlanId: p1, IdentityChecked: true),
+                        "Clinician"
+                    )
+                )
+            ).Code
+        );
+        var delivery = await Act(
+            "start",
+            new(Id: treatment, Version: 1, PlanId: p2, IdentityChecked: true),
+            "Clinician"
+        );
+        await Act(
+            "finish",
+            new(Id: delivery, Version: 1, Outcome: "Interrupted", Text: "需人工评估"),
+            "Clinician"
+        );
+        await using var verify = fixture.Db();
+        Assert.Equal("Failed", (await verify.Set<TreatmentPlan>().FindAsync(p1))!.Validation);
+        Assert.Equal("Passed", (await verify.Set<TreatmentPlan>().FindAsync(p2))!.Validation);
+        Assert.Equal(p2, (await verify.Set<TreatmentDelivery>().FindAsync(delivery))!.PlanId);
+        Assert.Equal(
+            "Interrupted",
+            (await verify.Set<TreatmentDelivery>().FindAsync(delivery))!.Outcome
+        );
+        Assert.True(
+            await verify
+                .Set<OisTask>()
+                .AnyAsync(t => t.TargetId == delivery && t.Role == "Clinician")
+        );
+        Assert.Equal(3, await verify.Set<Reservation>().CountAsync());
+    }
 
     [Fact]
     public async Task Concurrent_booking_has_one_winner_and_atomic_audit()

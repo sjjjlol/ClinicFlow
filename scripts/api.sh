@@ -9,5 +9,5 @@ export Imaging__Password="${INTEGRATION_TOKEN}"
 export Imaging__BaseUrl="http://127.0.0.1:${ORTHANC_PORT:-8042}/"
 export ASPNETCORE_URLS=http://127.0.0.1:5080
 export ASPNETCORE_ENVIRONMENT=Development
-if [[ ! -d agent-runtime/node_modules ]]; then npm --prefix agent-runtime ci; fi
+if [[ "${Legacy__Enabled:-false}" == "true" && ! -d agent-runtime/node_modules ]]; then npm --prefix agent-runtime ci; fi
 exec ./scripts/dotnet.sh run --project backend

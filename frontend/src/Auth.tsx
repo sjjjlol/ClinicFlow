@@ -4,9 +4,11 @@ import { api, refreshCsrf, type User } from "./api";
 export default function Auth({
   onLogin,
   initialError,
+  staffOnly = false,
 }: {
   onLogin: (user: User) => void;
   initialError: string;
+  staffOnly?: boolean;
 }) {
   const [register, setRegister] = useState(false);
   const [username, setUsername] = useState("");
@@ -50,11 +52,19 @@ export default function Auth({
       >
         <div className="brand-icon">✳</div>
         <p className="eyebrow">CLINICFLOW</p>
-        <h1>{register ? "创建你的预约账号" : "让预约，有条不紊。"}</h1>
+        <h1>
+          {register
+            ? "创建你的预约账号"
+            : staffOnly
+              ? "放疗协作，有序衔接。"
+              : "让预约，有条不紊。"}
+        </h1>
         <p className="muted">
           {register
             ? "注册后可为自己预约，并随时查看进度。"
-            : "登录账号，管理每一次预约。"}
+            : staffOnly
+              ? "ClinicFlow OIS · 预约、诊疗与物理验证"
+              : "登录账号，管理每一次预约。"}
         </p>
         <label>
           账号
@@ -114,17 +124,19 @@ export default function Auth({
         <button className="primary wide" disabled={busy}>
           {busy ? "正在处理…" : register ? "注册并进入" : "进入工作台 →"}
         </button>
-        <button
-          className="link-button wide"
-          type="button"
-          disabled={busy}
-          onClick={() => {
-            setRegister(!register);
-            setError("");
-          }}
-        >
-          {register ? "已有账号？返回登录" : "没有账号？注册预约账号"}
-        </button>
+        {!staffOnly && (
+          <button
+            className="link-button wide"
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              setRegister(!register);
+              setError("");
+            }}
+          >
+            {register ? "已有账号？返回登录" : "没有账号？注册预约账号"}
+          </button>
+        )}
         {!register && (
           <details className="demo-login">
             <summary>工作人员演示账号</summary>
@@ -132,7 +144,13 @@ export default function Auth({
               演示角色
               <select
                 value={
-                  ["scheduler", "taskoperator", "admin"].includes(username)
+                  [
+                    "scheduler",
+                    "clinician",
+                    "physicist",
+                    "taskoperator",
+                    "admin",
+                  ].includes(username)
                     ? username
                     : ""
                 }
@@ -142,8 +160,12 @@ export default function Auth({
                   选择演示账号
                 </option>
                 <option value="scheduler">预约人员 · Scheduler</option>
-                <option value="taskoperator">任务人员 · TaskOperator</option>
-                <option value="admin">管理员 · Admin</option>
+                <option value="clinician">诊疗人员 · Clinician</option>
+                <option value="physicist">物理师 · Physicist</option>
+                {!staffOnly && (
+                  <option value="taskoperator">任务人员 · TaskOperator</option>
+                )}
+                {!staffOnly && <option value="admin">管理员 · Admin</option>}
               </select>
             </label>
             <p className="footnote">演示密码由本机配置提供。</p>

@@ -2,6 +2,8 @@ name: CI
 on: [push, pull_request]
 jobs:
   verify:
+    env:
+      Legacy__Enabled: "true"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -48,7 +50,6 @@ jobs:
       - run: |
           dotnet publish backend -c Release -o artifacts/app
           cp -R frontend/dist artifacts/app/wwwroot
-          cp -R agent-runtime artifacts/app/agent-runtime
       - uses: actions/upload-artifact@v4
         with:
           name: clinicflow-portable

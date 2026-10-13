@@ -1,0 +1,593 @@
+.ois-shell {
+  --ink: #193b40;
+  --accent: #0c766d;
+  --line: #e0e8e7;
+  display: flex;
+  min-height: 100vh;
+  background: #f4f7f6;
+  color: var(--ink);
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+.ois-shell * {
+  box-sizing: border-box;
+}
+.ois-sidebar {
+  width: 232px;
+  flex-shrink: 0;
+  position: fixed;
+  inset: 0 auto 0 0;
+  background: #123e42;
+  padding: 30px 18px;
+  color: #c9dfdd;
+  display: flex;
+  flex-direction: column;
+}
+.ois-brand {
+  color: white;
+  font-size: 23px;
+  font-weight: 700;
+  text-decoration: none;
+  padding: 0 10px;
+}
+.ois-brand span {
+  color: #88d7b1;
+  font-size: 31px;
+}
+.ois-brand small {
+  display: block;
+  letter-spacing: 2px;
+  font-size: 9px;
+  margin-top: 9px;
+  color: #a6c6c5;
+}
+.ois-role {
+  font-size: 12px;
+  margin: 44px 12px 12px;
+  color: #a6c6c5;
+}
+.ois-sidebar nav {
+  display: grid;
+  gap: 8px;
+}
+.ois-sidebar nav button {
+  background: transparent;
+  color: #c9dfdd;
+  border: 0;
+  text-align: left;
+  padding: 13px 12px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+.ois-sidebar nav button.active {
+  background: #28575a;
+  color: white;
+}
+.ois-sidebar nav button span {
+  font-size: 21px;
+}
+.ois-sidebar nav b {
+  margin-left: auto;
+  background: #d7ecb6;
+  color: #193b40;
+  border-radius: 12px;
+  padding: 2px 7px;
+  font-size: 11px;
+}
+.ois-account {
+  margin-top: auto;
+  padding: 20px 10px 0;
+  border-top: 1px solid #426265;
+  display: grid;
+  gap: 8px;
+}
+.ois-account small {
+  color: #9fbcb9;
+}
+.ois-account button {
+  background: transparent;
+  color: #c9dfdd;
+  border: 1px solid #517577;
+}
+.ois-main {
+  margin-left: 232px;
+  flex: 1;
+  min-width: 0;
+}
+.ois-topbar {
+  height: 70px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 36px;
+  font-size: 12px;
+  color: #6a8182;
+  background: #fff;
+}
+.ois-content {
+  max-width: 1600px;
+  margin: auto;
+  padding: 30px 36px;
+}
+.ois-page-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 25px;
+}
+.ois-kicker {
+  font-size: 10px;
+  letter-spacing: 2px;
+  font-weight: 700;
+  color: #55837d;
+  margin: 0 0 8px;
+}
+.ois-shell h1 {
+  font-size: 29px;
+  margin: 0 0 10px;
+  letter-spacing: -0.7px;
+}
+.ois-shell h2 {
+  font-size: 17px;
+  margin: 0;
+}
+.ois-shell h3 {
+  font-size: 14px;
+}
+.ois-muted {
+  font-size: 12px;
+  color: #728482;
+  line-height: 1.8;
+}
+.ois-shell button {
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  border: 1px solid #cdddda;
+  background: white;
+  color: var(--ink);
+  padding: 9px 13px;
+  border-radius: 6px;
+}
+.ois-shell button:hover {
+  border-color: #29897e;
+  background: #edf5f2;
+}
+.ois-shell button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.ois-shell button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+.ois-shell input,
+.ois-shell select,
+.ois-shell textarea {
+  border: 1px solid #cbdad6;
+  border-radius: 6px;
+  padding: 9px;
+  font: inherit;
+  font-size: 13px;
+  background: white;
+  color: var(--ink);
+  max-width: 100%;
+}
+.ois-shell :focus-visible {
+  outline: 3px solid #78bba5;
+  outline-offset: 2px;
+}
+.ois-panel {
+  padding: 23px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin: 20px 0;
+}
+.ois-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.ois-toolbar h2,
+.ois-toolbar > div:first-child {
+  margin-right: auto;
+}
+.ois-actions {
+  display: flex;
+  gap: 9px;
+  flex-wrap: wrap;
+  margin: 15px 0;
+}
+.ois-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 15px;
+}
+.ois-stats article {
+  border: 1px solid var(--line);
+  background: white;
+  border-radius: 10px;
+  padding: 20px;
+  display: grid;
+  gap: 10px;
+}
+.ois-stats small {
+  font-size: 12px;
+  color: #617b79;
+}
+.ois-stats strong {
+  font-size: 30px;
+}
+.ois-stats span {
+  font-size: 11px;
+  color: #7b908b;
+}
+.ois-shell .ois-row {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  text-align: left;
+  padding: 17px 2px;
+  border: 0;
+  border-bottom: 1px solid #edf1ef;
+  border-radius: 0;
+}
+.ois-row > span:nth-child(2) {
+  flex: 1;
+}
+.ois-row strong,
+.ois-row small {
+  display: block;
+}
+.ois-row small {
+  color: #78908a;
+  font-size: 11px;
+  margin-top: 7px;
+}
+.ois-dot {
+  width: 8px;
+  height: 32px;
+  background: #73a896;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.ois-dot.treatment {
+  background: #6b91c0;
+}
+.ois-dot.experiment {
+  background: #b49bce;
+}
+.ois-badge {
+  display: inline-block;
+  font-size: 10px;
+  background: #e9f4ed;
+  color: #367666;
+  padding: 4px 8px;
+  border-radius: 5px;
+  white-space: nowrap;
+}
+.ois-badge.danger {
+  color: #a3652b;
+  background: #fff0d9;
+}
+.ois-alert {
+  padding: 12px 15px;
+  background: #fff1e7;
+  color: #925029;
+  border: 1px solid #f3d7bc;
+  border-radius: 6px;
+  margin: 15px 0;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.ois-notice {
+  padding: 12px 15px;
+  background: #e3f2e8;
+  color: #246651;
+  margin: 15px 0;
+  border-radius: 6px;
+}
+.ois-empty {
+  padding: 25px;
+  text-align: center;
+  color: #78908a;
+  font-size: 13px;
+}
+.ois-machine-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+.ois-machine-grid h2 {
+  margin-top: 20px;
+}
+.ois-patients {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 20px 0;
+}
+.ois-patients button {
+  min-width: 160px;
+  text-align: left;
+  display: grid;
+  gap: 8px;
+}
+.ois-patients button.selected {
+  background: #e6f3ed;
+  border-color: #238573;
+}
+.ois-patients small {
+  color: #729185;
+  font-size: 10px;
+}
+.ois-record {
+  border-top: 1px solid var(--line);
+  padding: 15px 0;
+  font-size: 13px;
+}
+.ois-record summary {
+  cursor: pointer;
+  line-height: 1.7;
+}
+.ois-record pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  background: #f4f7f5;
+  padding: 16px;
+}
+.ois-plan {
+  padding: 20px;
+  background: #f7faf8;
+  border: 1px solid #e0eae4;
+  border-radius: 8px;
+  margin: 18px 0;
+}
+.ois-pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.ois-task {
+  display: flex;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--line);
+}
+.ois-task strong {
+  display: block;
+  margin: 10px 0;
+  font-size: 13px;
+}
+.ois-task small {
+  font-size: 10px;
+  color: #7b908b;
+}
+.ois-overlay {
+  position: fixed;
+  inset: 0;
+  background: #102c3a66;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  backdrop-filter: blur(3px);
+}
+.ois-dialog {
+  background: white;
+  width: 620px;
+  max-height: 90vh;
+  overflow: auto;
+  padding: 27px;
+  border-radius: 14px;
+  box-shadow: 0 24px 80px #08232844;
+}
+.ois-field {
+  display: block;
+  font-size: 12px;
+  margin: 17px 0;
+}
+.ois-field > input:not([type="checkbox"]),
+.ois-field > select,
+.ois-field > textarea {
+  display: block;
+  width: 100%;
+  margin-top: 7px;
+}
+.ois-field input[type="checkbox"] {
+  margin-right: 10px;
+}
+.ois-context {
+  background: #f0f5f2;
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.ois-dialog dl > div {
+  border-bottom: 1px solid var(--line);
+  padding: 10px 0;
+}
+.ois-dialog dt {
+  font-size: 11px;
+  color: #718c81;
+}
+.ois-dialog dd {
+  margin: 8px 0;
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+.ois-calendar-scroll {
+  overflow: auto;
+  max-height: 650px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.ois-calendar {
+  display: grid;
+  min-width: 700px;
+}
+.ois-cal-head {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: #eef5f1;
+  padding: 15px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  border-right: 1px solid var(--line);
+  text-align: center;
+}
+.ois-hours > div {
+  height: 64px;
+  font-size: 9px;
+  color: #799087;
+  padding: 3px;
+  background: #fafcfb;
+  border-top: 1px solid #e5ede7;
+}
+.ois-day {
+  height: 1536px;
+  position: relative;
+  border-left: 1px solid var(--line);
+}
+.ois-shell .ois-slot {
+  display: block;
+  width: 100%;
+  height: 16px;
+  border: 0;
+  border-bottom: 1px solid #f2f5f2;
+  border-radius: 0;
+  padding: 0;
+}
+.ois-shell .ois-slot:nth-child(4n) {
+  border-bottom-color: #dfe9e2;
+}
+.ois-shell .ois-event {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  padding: 2px 5px;
+  border: 1px solid #b3d4bc;
+  background: #e0efdf;
+  text-align: left;
+  overflow: hidden;
+  border-radius: 4px;
+  font-size: 10px;
+  min-height: 0;
+}
+.ois-event strong,
+.ois-event small {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ois-shell .ois-event.treatment {
+  background: #e1edf8;
+  border-color: #b8cde2;
+}
+.ois-shell .ois-event.experiment {
+  background: #efe7f5;
+  border-color: #d6c4e6;
+}
+.ois-shell .ois-event.maintenance {
+  background: #ededed;
+  border-color: #c9c9c9;
+}
+.ois-shell .ois-event.blocked {
+  border-left: 4px solid #cb9443;
+}
+.ois-legend {
+  font-size: 11px;
+  color: #619570;
+  margin-top: 15px;
+}
+.ois-legend span:nth-child(1) {
+  color: #658aae;
+}
+.ois-legend span:nth-child(2) {
+  color: #a78ab9;
+}
+.ois-access {
+  padding: 60px;
+}
+.ois-access a {
+  margin-left: 20px;
+}
+@media (max-width: 900px) {
+  .ois-sidebar {
+    width: 185px;
+  }
+  .ois-main {
+    margin-left: 185px;
+  }
+  .ois-content {
+    padding: 22px 18px;
+  }
+  .ois-topbar {
+    padding: 0 18px;
+  }
+  .ois-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .ois-machine-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 600px) {
+  .ois-sidebar {
+    position: static;
+    width: 100%;
+    padding: 15px;
+  }
+  .ois-shell {
+    display: block;
+  }
+  .ois-sidebar nav {
+    grid-template-columns: repeat(3, 1fr);
+    margin-top: 12px;
+  }
+  .ois-sidebar nav button {
+    font-size: 11px;
+    padding: 7px;
+    gap: 5px;
+  }
+  .ois-role,
+  .ois-account,
+  .ois-brand small {
+    display: none;
+  }
+  .ois-main {
+    margin-left: 0;
+  }
+  .ois-topbar {
+    height: 45px;
+    font-size: 10px;
+  }
+  .ois-page-title h1 {
+    font-size: 23px;
+  }
+  .ois-task {
+    display: block;
+  }
+  .ois-overlay {
+    padding: 10px;
+  }
+  .ois-dialog {
+    padding: 20px;
+  }
+  .ois-sidebar .ois-brand {
+    font-size: 19px;
+  }
+}

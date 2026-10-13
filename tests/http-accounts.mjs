@@ -30,10 +30,14 @@ assert.equal((await alice.request('/fhir/r4/Patient/' + registered.body.patientI
 for (const path of ['/api/sync', '/api/sync/forged/attempts'])
   assert.equal((await alice.request(path)).status, 403);
 
+if (process.env.Legacy__Enabled === 'true') {
 assert.equal((await alice.request('/api/agent/config')).status, 200);
 assert.equal((await alice.request('/api/agent/config')).body.demoEnabled, false);
 assert.equal((await alice.request('/api/agent/messages', {message:'预约', selectedPatientId: other.body.patientId})).status, 403);
 assert.equal((await alice.request('/api/agent/forged/confirm', {candidateId:'forged'})).status, 404);
+} else {
+  assert.equal((await alice.request('/api/agent/config')).status, 404);
+}
 
 const start = new Date(Date.UTC(2037, 0, 1) + Math.floor(Math.random() * 100000) * 900000);
 const booking = {patientId: registered.body.patientId, resourceId: 1, startUtc: start.toISOString(), endUtc: new Date(+start + 3600000).toISOString()};

@@ -14,6 +14,7 @@ node tests/http-fhir.mjs
 
 node tests/http-response-loss.mjs
 
-node tests/http-agent.mjs
+if [[ "${Legacy__Enabled:-false}" == "true" ]]; then node tests/http-agent.mjs; fi
+node tests/http-ois.mjs
 
 node tests/http-accounts.mjs

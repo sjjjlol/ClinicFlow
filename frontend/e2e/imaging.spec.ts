@@ -6,7 +6,7 @@ test("DICOM existing study association, viewer pixels, download and unlink", asy
   context,
 }) => {
   test.setTimeout(90_000);
-  await page.goto("/");
+  await page.goto("/legacy");
   await page.getByLabel("账号", { exact: true }).fill("scheduler");
   await page
     .getByLabel("密码", { exact: true })

@@ -58,10 +58,6 @@ services:
       ConnectionStrings__Clinic: Server=db;Database=clinicflow;User=clinicflow;Password=${DB_PASSWORD}
       DEMO_PASSWORD: ${DEMO_PASSWORD}       # 首次启动种子账号密码（Identity.Seed 用）
       INTEGRATION_TOKEN: ${INTEGRATION_TOKEN}
-      KIMI_API_KEY: ${KIMI_API_KEY:-}
-      Agent__BaseUrl: ${Agent__BaseUrl:-https://api.moonshot.cn/v1}
-      Agent__Model: ${Agent__Model:-kimi-k2.6}
-      Agent__DemoEnabled: ${Agent__DemoEnabled:-false}
       Imaging__BaseUrl: http://orthanc:8042/
       Imaging__Password: ${INTEGRATION_TOKEN}
       Integration__Url: http://mock:5090    # Outbox 投递目标 = mock 服务名

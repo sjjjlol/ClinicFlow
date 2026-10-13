@@ -93,7 +93,7 @@ test("agent cards require explicit confirmation and fresh confirmation after con
       });
     }
   });
-  await page.goto("/");
+  await page.goto("/legacy");
   await page.getByLabel("账号", { exact: true }).fill("scheduler");
   await page
     .getByLabel("密码", { exact: true })
@@ -165,7 +165,7 @@ test("agent preserves the same candidate when a confirmation response is lost", 
         },
       });
   });
-  await page.goto("/");
+  await page.goto("/legacy");
   await page.getByLabel("账号", { exact: true }).fill("scheduler");
   await page
     .getByLabel("密码", { exact: true })

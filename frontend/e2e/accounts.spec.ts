@@ -6,7 +6,7 @@ test("registered account books only for itself, reschedules, cancels and signs i
 }) => {
   const username = "browser_" + crypto.randomUUID().slice(0, 8);
   const password = "12345678";
-  await page.goto("/");
+  await page.goto("/legacy");
   await page.getByRole("button", { name: "没有账号？注册预约账号" }).click();
   await page.getByLabel("账号", { exact: true }).fill(username);
   await page.getByLabel("预约姓名", { exact: true }).fill("浏览器测试预约者");
@@ -88,7 +88,7 @@ test("staff complete a historical confirmed appointment and terminal UI hides mu
       page.getByRole("heading", { name: "预约工作台", exact: true }),
     ).toBeVisible();
   }
-  await page.goto("/");
+  await page.goto("/legacy");
   await login("scheduler");
   await page.getByRole("button", { name: "新建预约" }).click();
   const date = new Date(
@@ -106,7 +106,7 @@ test("staff complete a historical confirmed appointment and terminal UI hides mu
   await page.getByRole("button", { name: "关闭详情" }).click();
   await page.getByRole("button", { name: "退出登录" }).click();
   await login("taskoperator");
-  await page.goto("/?appointment=" + a.id);
+  await page.goto("/legacy?appointment=" + a.id);
   await page
     .getByRole("button", { name: "完成 资料核对", exact: true })
     .click();
