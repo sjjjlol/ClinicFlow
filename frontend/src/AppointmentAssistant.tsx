@@ -42,6 +42,7 @@ export default function AppointmentAssistant({
   onPatientChange: (id: number) => void;
   onCreated: (a: Appointment) => Promise<void>;
 }) {
+  const [unavailable, setUnavailable] = useState(false);
   const [config, setConfig] = useState<{
     configured: boolean;
     demoEnabled: boolean;
@@ -101,7 +102,10 @@ export default function AppointmentAssistant({
   useEffect(() => {
     api<typeof config>("/api/agent/config")
       .then(setConfig)
-      .catch((e) => setError(e.message));
+      .catch((e) => {
+        if (e instanceof ApiError && e.status === 404) setUnavailable(true);
+        else setError(e.message);
+      });
   }, []);
   function receive(next: Reply) {
     setReply(next);
@@ -199,6 +203,7 @@ export default function AppointmentAssistant({
       setBusy(false);
     }
   }
+  if (unavailable) return null;
   return (
     <section className="panel assistant" aria-label="预约协调助手">
       <div className="panel-heading">

@@ -138,3 +138,31 @@ test("OIS single booking preview, cancellation, restore and week calendar", asyn
   await expect(page.getByLabel("日历资源")).toBeVisible();
   await expect(event).toHaveCount(1);
 });
+
+test("legacy scheduling hides the assistant when its API is disabled", async ({
+  page,
+}) => {
+  await page.route("**/api/auth/me", (r) =>
+    r.fulfill({ json: { name: "scheduler", role: "Scheduler" } }),
+  );
+  await page.route("**/api/resources", (r) =>
+    r.fulfill({ json: [{ id: 1, name: "预约室 A" }] }),
+  );
+  await page.route("**/api/patients", (r) =>
+    r.fulfill({ json: [{ id: 1, name: "模拟患者" }] }),
+  );
+  await page.route("**/api/appointments?**", (r) =>
+    r.fulfill({ json: { items: [], total: 0 } }),
+  );
+  await page.route("**/api/agent/config", (r) =>
+    r.fulfill({ status: 404, json: { code: "not_found" } }),
+  );
+  await page.goto("/legacy");
+  await expect(
+    page.getByRole("heading", { name: "预约安排 Appointments" }),
+  ).toBeVisible();
+  await expect(page.getByRole("region", { name: "预约协调助手" })).toHaveCount(
+    0,
+  );
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
