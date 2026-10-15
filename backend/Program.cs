@@ -243,8 +243,8 @@ app.MapMethods(
     )
     .ExcludeFromDescription(); // 从 OpenAPI 文档中排除
 
-// 前端路由兜底：非 /api 路径都回退到 index.html（SPA history 模式）。
-app.MapFallbackToFile("index.html");
+// OIS uses one root page; unknown paths must not revive removed UI/API entry points.
+app.MapFallback(() => Results.NotFound(new { code = "not_found" })).ExcludeFromDescription();
 app.Run(); // 启动 Kestrel（内置 Web 服务器 ≈ 内嵌 Tomcat）并阻塞监听
 
 // partial class：让测试项目的 WebApplicationFactory<Program> 能找到入口类型（顶层语句会生成隐藏的 Program）。

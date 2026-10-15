@@ -27,7 +27,7 @@ assert.ok(state.reservations.find(x=>x.reservation.id===id).blockers.includes('�
 assert.equal(state.plans.find(p=>p.id===planId).reviewedBy,'clinician');
 assert.equal((await scheduler.request(path+'cancel',{id,version:1,reason:'过期版本'},crypto.randomUUID())).body.code,'version_conflict');
 scheduler.token='';assert.equal((await scheduler.request(path+'cancel',{id,version:3,reason:'无CSRF'},crypto.randomUUID())).status,400);
-for (const endpoint of ['/api/agent/config','/api/appointments','/api/resources','/api/patients','/api/sync','/api/imaging/studies','/api/fhir/metadata']) assert.equal((await clinician.request(endpoint)).status,404);
+for (const endpoint of ['/api/agent/config','/api/appointments','/api/resources','/api/patients','/api/sync','/api/imaging/studies','/fhir/r4/metadata','/legacy']) assert.equal((await clinician.request(endpoint)).status,404);
 assert.equal((await clinician.request('/api/auth/register',{username:'removed',password:'unused-password',displayName:'removed'})).status,404);
 const schema=(await clinician.request('/api/openapi/v1.json')).body;
 assert.ok(Object.keys(schema.paths).every(p=>p.startsWith('/api/auth/')||p.startsWith('/api/ois/')||p==='/api/health'));
