@@ -4,13 +4,10 @@ import { api, refreshCsrf, type User } from "./api";
 export default function Auth({
   onLogin,
   initialError,
-  staffOnly = false,
 }: {
   onLogin: (user: User) => void;
   initialError: string;
-  staffOnly?: boolean;
 }) {
-  const [register, setRegister] = useState(false);
   const [username, setUsername] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(initialError);
@@ -18,21 +15,13 @@ export default function Auth({
     e.preventDefault();
     const data = new FormData(e.currentTarget);
     setError("");
-    if (register && data.get("password") !== data.get("confirmPassword")) {
-      setError("两次输入的密码不一致");
-      return;
-    }
     setBusy(true);
     try {
       await refreshCsrf();
-      const user = await api<User>(
-        register ? "/api/auth/register" : "/api/auth/login",
-        {
-          username,
-          password: data.get("password"),
-          ...(register ? { displayName: data.get("displayName") } : {}),
-        },
-      );
+      const user = await api<User>("/api/auth/login", {
+        username,
+        password: data.get("password"),
+      });
       await refreshCsrf();
       onLogin(user);
     } catch (e) {
@@ -45,132 +34,64 @@ export default function Auth({
     <div className="login-scene">
       <div className="orb one" />
       <div className="orb two" />
-      <form
-        key={register ? "register" : "login"}
-        className="login-card"
-        onSubmit={submit}
-      >
+      <form className="login-card" onSubmit={submit}>
         <div className="brand-icon">✳</div>
-        <p className="eyebrow">CLINICFLOW</p>
-        <h1>
-          {register
-            ? "创建你的预约账号"
-            : staffOnly
-              ? "放疗协作，有序衔接。"
-              : "让预约，有条不紊。"}
-        </h1>
-        <p className="muted">
-          {register
-            ? "注册后可为自己预约，并随时查看进度。"
-            : staffOnly
-              ? "ClinicFlow OIS · 预约、诊疗与物理验证"
-              : "登录账号，管理每一次预约。"}
-        </p>
+        <p className="eyebrow">CLINICFLOW OIS</p>
+        <h1>放疗协作，有序衔接。</h1>
+        <p className="muted">ClinicFlow OIS · 预约、诊疗与物理验证</p>
         <label>
           账号
           <input
             name="username"
             autoComplete="username"
             required
-            minLength={3}
             maxLength={40}
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            pattern="[A-Za-z0-9][A-Za-z0-9_\-]{2,39}"
-            placeholder="3–40位字母、数字、下划线或短横线"
+            placeholder="输入工作人员账号"
           />
         </label>
-        {register && (
-          <label>
-            预约姓名
-            <input
-              name="displayName"
-              autoComplete="name"
-              required
-              maxLength={80}
-              placeholder="请输入演示姓名"
-            />
-          </label>
-        )}
         <label>
           密码
           <input
             name="password"
             type="password"
-            autoComplete={register ? "new-password" : "current-password"}
+            autoComplete="current-password"
             required
-            minLength={register ? 8 : undefined}
             maxLength={128}
-            placeholder={register ? "至少8个字符" : "输入你的密码"}
+            placeholder="输入你的密码"
           />
         </label>
-        {register && (
-          <label>
-            确认密码
-            <input
-              name="confirmPassword"
-              type="password"
-              autoComplete="new-password"
-              required
-              maxLength={128}
-            />
-          </label>
-        )}
         {error && (
           <p role="alert" className="error">
             {error}
           </p>
         )}
         <button className="primary wide" disabled={busy}>
-          {busy ? "正在处理…" : register ? "注册并进入" : "进入工作台 →"}
+          {busy ? "正在处理…" : "进入工作台 →"}
         </button>
-        {!staffOnly && (
-          <button
-            className="link-button wide"
-            type="button"
-            disabled={busy}
-            onClick={() => {
-              setRegister(!register);
-              setError("");
-            }}
-          >
-            {register ? "已有账号？返回登录" : "没有账号？注册预约账号"}
-          </button>
-        )}
-        {!register && (
-          <details className="demo-login">
-            <summary>工作人员演示账号</summary>
-            <label>
-              演示角色
-              <select
-                value={
-                  [
-                    "scheduler",
-                    "clinician",
-                    "physicist",
-                    "taskoperator",
-                    "admin",
-                  ].includes(username)
-                    ? username
-                    : ""
-                }
-                onChange={(e) => setUsername(e.target.value)}
-              >
-                <option value="" disabled>
-                  选择演示账号
-                </option>
-                <option value="scheduler">预约人员 · Scheduler</option>
-                <option value="clinician">诊疗人员 · Clinician</option>
-                <option value="physicist">物理师 · Physicist</option>
-                {!staffOnly && (
-                  <option value="taskoperator">任务人员 · TaskOperator</option>
-                )}
-                {!staffOnly && <option value="admin">管理员 · Admin</option>}
-              </select>
-            </label>
-            <p className="footnote">演示密码由本机配置提供。</p>
-          </details>
-        )}
+        <details className="demo-login">
+          <summary>工作人员演示账号</summary>
+          <label>
+            演示角色
+            <select
+              value={
+                ["scheduler", "clinician", "physicist"].includes(username)
+                  ? username
+                  : ""
+              }
+              onChange={(e) => setUsername(e.target.value)}
+            >
+              <option value="" disabled>
+                选择演示账号
+              </option>
+              <option value="scheduler">预约人员 · Scheduler</option>
+              <option value="clinician">诊疗人员 · Clinician</option>
+              <option value="physicist">物理师 · Physicist</option>
+            </select>
+          </label>
+          <p className="footnote">演示密码由本机配置提供。</p>
+        </details>
         <p className="footnote">学习演示环境 · 请使用虚构姓名</p>
       </form>
     </div>

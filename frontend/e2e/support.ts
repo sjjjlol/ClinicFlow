@@ -1,9 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
 
-export async function submitRegistration(page: Page) {
-  await submitAuth(page, "/api/auth/register", "注册并进入", 201);
-}
-
 // HTTP and browser suites can share one server/IP. Honor the real auth limiters
 // rather than disabling it in the test environment.
 export async function submitLogin(page: Page) {

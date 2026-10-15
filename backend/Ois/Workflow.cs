@@ -1,4 +1,3 @@
-using ClinicFlow.Scheduling;
 
 namespace ClinicFlow.Ois;
 
@@ -492,7 +491,10 @@ public class OisWorkflow
 
     void CheckSlot(Reservation r, DateTime now)
     {
-        Rules.Slots(r.StartUtc, r.EndUtc);
+        if (r.StartUtc.Ticks % TimeSpan.FromMinutes(15).Ticks != 0
+            || r.EndUtc.Ticks % TimeSpan.FromMinutes(15).Ticks != 0
+            || r.EndUtc <= r.StartUtc || r.EndUtc - r.StartUtc > TimeSpan.FromHours(4))
+            throw new BusinessException("invalid_time", "起止时间必须对齐15分钟，时长为15分钟至4小时", 400);
         Need(r.StartUtc > now, "past_slot", "请选择未来时段");
         var resource = Get(Resources, r.ResourceId);
         Need(

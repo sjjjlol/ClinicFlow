@@ -33,7 +33,7 @@ public static class ApiDocumentation
                             }
                         );
                         // StartsWith ≈ Java String.startsWith。
-                        if (path.StartsWith("api/appointments") || path.StartsWith("api/sync"))
+                        if (path.StartsWith("api/ois/commands/"))
                             operation.Parameters.Add(
                                 new OpenApiParameter
                                 {
@@ -41,7 +41,7 @@ public static class ApiDocumentation
                                     In = ParameterLocation.Header,
                                     Required = true,
                                     Description =
-                                        "Same subject/operation/key plus same canonical body replays original success. Mutation body Version must match current appointment.",
+                                        "Same actor/role/key and command replays the original success. A changed command conflicts. Version must match the current target.",
                                     Schema = new OpenApiSchema
                                     {
                                         Type = JsonSchemaType.String,

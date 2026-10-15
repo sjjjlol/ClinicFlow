@@ -43,5 +43,4 @@ USER app
 # 声明监听端口（文档作用；真正映射靠 compose 的 ports）
 EXPOSE 8080
 # exec 数组形式 ENTRYPOINT：dotnet 进程成为 PID 1，能收到 docker stop 的 SIGTERM → 优雅停机
-# （停机时 OutboxWorker 靠 stoppingToken 退出循环，就是这个信号链的终点）
 ENTRYPOINT ["dotnet", "ClinicFlow.dll"]

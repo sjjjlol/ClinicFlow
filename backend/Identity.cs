@@ -1,12 +1,9 @@
 using System.Security.Claims;
-using System.Text.RegularExpressions;
-using ClinicFlow.Scheduling;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using MySqlConnector;
 
 namespace ClinicFlow;
 
@@ -17,7 +14,7 @@ public static class Identity
     public static async Task Seed(ClinicDb db, IConfiguration config)
     {
         var existing = await db.Users.Select(x => x.Id).ToListAsync();
-        var roles = new[] { "Scheduler", "Clinician", "Physicist", "TaskOperator", "Admin" };
+        var roles = new[] { "Scheduler", "Clinician", "Physicist" };
         if (roles.All(role => existing.Contains(role.ToLowerInvariant())))
             return;
         var password =
@@ -49,22 +46,6 @@ public static class Identity
                 new { token = anti.GetAndStoreTokens(ctx).RequestToken }
         );
         app.MapPost(
-                "/api/auth/register",
-                async (Registration input, ClinicDb db, HttpContext ctx, CancellationToken ct) =>
-                {
-                    if (ctx.User.Identity?.IsAuthenticated == true)
-                        throw new BusinessException(
-                            "already_signed_in",
-                            "请先退出当前账号再注册",
-                            409
-                        );
-                    var user = await Register(input, db, ct);
-                    await SignIn(user, ctx);
-                    return Results.Json(Profile(user), statusCode: 201);
-                }
-            )
-            .RequireRateLimiting("register");
-        app.MapPost(
                 "/api/auth/login",
                 async (Login input, ClinicDb db, HttpContext ctx, CancellationToken ct) =>
                 {
@@ -75,6 +56,7 @@ public static class Identity
                     );
                     if (
                         user is null
+                        || !Roles.Contains(user.Role)
                         || new PasswordHasher<DemoUser>().VerifyHashedPassword(
                             user,
                             user.PasswordHash,
@@ -109,58 +91,9 @@ public static class Identity
                     {
                         name = ctx.User.Identity!.Name,
                         role = ctx.User.FindFirstValue(ClaimTypes.Role),
-                        patientId = ctx.User.PatientScope(),
                     }
             )
             .RequireAuthorization();
-    }
-
-    public static async Task<DemoUser> Register(
-        Registration input,
-        ClinicDb db,
-        CancellationToken ct
-    )
-    {
-        var username = (input.Username ?? "").Trim().ToLowerInvariant();
-        var name = (input.DisplayName ?? "").Trim();
-        if (!Regex.IsMatch(username, "^[a-z0-9][a-z0-9_-]{2,39}$"))
-            throw new BusinessException(
-                "invalid_username",
-                "账号须为3–40位英文字母、数字、下划线或短横线",
-                400
-            );
-        if (name.Length is < 1 or > 80 || name.Any(char.IsControl))
-            throw new BusinessException("invalid_name", "预约姓名须为1–80个可显示字符", 400);
-        if (input.Password is null || input.Password.Length is < 8 or > 128)
-            throw new BusinessException("invalid_password", "密码须为8–128个字符", 400);
-        var user = new DemoUser
-        {
-            Id = username,
-            Role = "Booker",
-            Patient = new Patient
-            {
-                Name = name,
-                Identifier = "USER-" + Guid.NewGuid().ToString("N"),
-            },
-        };
-        user.PasswordHash = new PasswordHasher<DemoUser>().HashPassword(user, input.Password);
-        db.Users.Add(user);
-        try
-        {
-            // EF saves the account and its patient in one transaction. Duplicate usernames
-            // roll back both rows, including when two registrations race.
-            await db.SaveChangesAsync(ct);
-        }
-        catch (DbUpdateException ex) when (ex.InnerException is MySqlException { Number: 1062 })
-        {
-            db.ChangeTracker.Clear();
-            throw new BusinessException(
-                "username_taken",
-                "账号已存在，请登录或换一个账号；若刚才注册响应中断，请尝试登录",
-                409
-            );
-        }
-        return user;
     }
 
     static object Profile(DemoUser user) =>
@@ -168,7 +101,6 @@ public static class Identity
         {
             name = user.Id,
             role = user.Role,
-            patientId = user.PatientId,
         };
 
     static Task SignIn(DemoUser user, HttpContext ctx)
@@ -179,13 +111,6 @@ public static class Identity
             new(ClaimTypes.Name, user.Id),
             new(ClaimTypes.Role, user.Role),
         };
-        if (user.PatientId is int patientId)
-            claims.Add(
-                new(
-                    "patient_id",
-                    patientId.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                )
-            );
         return ctx.SignInAsync(
             CookieAuthenticationDefaults.AuthenticationScheme,
             new ClaimsPrincipal(
@@ -194,7 +119,9 @@ public static class Identity
         );
     }
 
-    public record Registration(string Username, string Password, string DisplayName);
+    static readonly string[] Roles = ["Scheduler", "Clinician", "Physicist"];
+
+    public static bool IsStaff(ClaimsPrincipal principal) => Roles.Any(principal.IsInRole);
 
     // record DTO：登录请求体。JSON {username, password} 自动绑定（Web 默认 camelCase 匹配）。
     public record Login(string Username, string Password);

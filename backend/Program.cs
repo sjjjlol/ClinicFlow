@@ -1,14 +1,9 @@
-// ===== Program.cs：ASP.NET Core 应用入口与全部装配代码（≈ Spring Boot 的 Application + @Configuration 合体）=====
+// ===== OIS：ASP.NET Core 应用入口与装配 =====
 // C# 顶层语句（Top-level statements）：文件体即 Main 方法，无需 class Program { static void Main }。
 // using = Java 的 import（注意 C# 里 using 还有"自动释放资源"的第二含义，见下文 await using）。
 using System.Threading.RateLimiting;
 using ClinicFlow;
-using ClinicFlow.Agent;
-using ClinicFlow.Fhir;
-using ClinicFlow.Imaging;
-using ClinicFlow.Integration;
 using ClinicFlow.Ois;
-using ClinicFlow.Scheduling;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
@@ -42,6 +37,14 @@ builder
         o.ExpireTimeSpan = TimeSpan.FromHours(8); // TimeSpan ≈ Java Duration
         // API 项目不重定向到登录页，改为返回 401/403（≈ Spring 的 AuthenticationEntryPoint 定制）。
         // lambda 表达式 c => { ... } 与 Java 相同；Task.CompletedTask ≈ 立即完成的 CompletableFuture。
+        o.Events.OnValidatePrincipal = async c =>
+        {
+            if (c.Principal is null || !Identity.IsStaff(c.Principal))
+            {
+                c.RejectPrincipal();
+                await Microsoft.AspNetCore.Authentication.AuthenticationHttpContextExtensions.SignOutAsync(c.HttpContext);
+            }
+        };
         o.Events.OnRedirectToLogin = c =>
         {
             c.Response.StatusCode = 401;
@@ -54,15 +57,10 @@ builder
         };
     });
 
-// 命名授权策略 ≈ @PreAuthorize("hasRole('Scheduler')") 的声明式版本，端点上用 .RequireAuthorization("schedule") 引用。
+// 命名授权策略 ≈ @PreAuthorize("hasRole('Scheduler')") 的声明式版本，端点上用 .RequireAuthorization("ois") 引用。
 builder
     .Services.AddAuthorizationBuilder()
-    .AddPolicy("ois", p => p.RequireRole("Scheduler", "Clinician", "Physicist"))
-    .AddPolicy("schedule", p => p.RequireRole("Scheduler"))
-    .AddPolicy("booking", p => p.RequireRole("Scheduler", "Booker"))
-    .AddPolicy("tasks", p => p.RequireRole("TaskOperator"))
-    .AddPolicy("imaging", p => p.RequireRole("Scheduler", "TaskOperator", "Clinician", "Physicist"))
-    .AddPolicy("admin", p => p.RequireRole("Admin"));
+    .AddPolicy("ois", p => p.RequireRole("Scheduler", "Clinician", "Physicist"));
 
 // CSRF 防护：Cookie 会话必需；约定前端在 X-CSRF-TOKEN 头回传令牌。
 builder.Services.AddAntiforgery(o => o.HeaderName = "X-CSRF-TOKEN");
@@ -90,18 +88,6 @@ builder.Services.AddRateLimiter(o =>
         );
     };
     o.AddPolicy(
-        "register",
-        ctx =>
-            RateLimitPartition.GetFixedWindowLimiter(
-                ctx.Connection.RemoteIpAddress?.ToString() ?? "local",
-                _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = 5,
-                    Window = TimeSpan.FromMinutes(1),
-                }
-            )
-    );
-    o.AddPolicy(
         "login",
         ctx =>
             RateLimitPartition.GetFixedWindowLimiter(
@@ -121,24 +107,9 @@ builder.Services.ConfigureHttpJsonOptions(o =>
     o.SerializerOptions.Converters.Add(new UtcDateTimeConverter())
 );
 
-// AddScoped：每请求一个实例（Spring @RequestScope）；SchedulingService 内部持有 Scoped 的 ClinicDb。
-builder.Services.AddScoped<SchedulingService>();
 builder.Services.AddScoped<OisService>();
-if (builder.Configuration["Legacy:Enabled"] == "true")
-    builder.Services.AddAppointmentAgent();
-builder.Services.AddImaging(builder.Configuration);
-
-// AddSingleton：全应用一个实例；接口→实现 注册（≈ Spring 的 @Bean 返回接口类型）。
-builder.Services.AddSingleton<ITransactionProbe, NoTransactionProbe>();
-builder.Services.AddSingleton(TimeProvider.System); // 时钟抽象，测试可替换（≈ Java Clock）
-
-// HttpClient 工厂模式（≈ feign/RestTemplate 定制）：处理连接池与 Socket 耗尽问题。
-builder.Services.AddHttpClient<Dispatcher>(client => client.Timeout = TimeSpan.FromSeconds(5));
-
-// HostedService：随应用启停的后台任务（≈ @Scheduled 或独立线程，但由宿主管理生命周期）。
-if (builder.Configuration["Integration:Enabled"] != "false")
-    builder.Services.AddHostedService<OutboxWorker>();
-builder.Services.AddClinicOpenApi(); // 扩展方法（见 ApiDocumentation.cs），注册 OpenAPI 文档生成
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddClinicOpenApi();
 
 // Build()：容器定型，之后开始装中间件。
 var app = builder.Build();
@@ -258,73 +229,7 @@ app.MapGet(
 );
 app.MapIdentity(); // 认证端点组（扩展方法，见 Identity.cs）
 app.MapOis();
-if (app.Configuration["Legacy:Enabled"] == "true")
-    app.MapAppointmentAgent();
-app.MapScheduling(); // 预约端点组（见 Scheduling/Endpoints.cs）
-app.MapImaging();
-app.MapFhir(); // FHIR R4 只读适配（见 Fhir/FhirAdapter.cs）
-app.MapOpenApi("/api/openapi/{documentName}.json").RequireAuthorization();
-
-// Outbox 队列查看（管理员）：演示 IQueryable 的链式 LINQ。
-app.MapGet(
-        "/api/sync",
-        // CancellationToken ct：客户端断开时取消整条异步链（无 Java 直接对应）。
-        async (ClinicDb db, CancellationToken ct) =>
-            await db
-                .Outbox.AsNoTracking() // AsNoTracking：只读查询不做变更跟踪（≈ JPA read-only hint）
-                .OrderByDescending(x => x.NextAttemptUtc)
-                .ThenBy(x => x.Id)
-                .Take(100)
-                .Select(x => new // Select 投影到匿名类型 → 只查询这些列，翻译成 SQL SELECT 指定列
-                {
-                    x.Id,
-                    x.AppointmentId,
-                    x.Version,
-                    x.Status,
-                    x.Attempts,
-                    x.LastError,
-                    x.NextAttemptUtc,
-                })
-                .ToListAsync(ct) // ToListAsync 是执行边界：这里才真正发 SQL
-    )
-    .RequireAuthorization("admin");
-
-// {id} 路由占位参数自动绑定到 string id（≈ @PathVariable）。
-app.MapGet(
-        "/api/sync/{id}/attempts",
-        async (string id, ClinicDb db, CancellationToken ct) =>
-            await db.Set<SyncAttempt>() // Set<T>()：无显式 DbSet 属性时也可按类型取表
-                .AsNoTracking()
-                .Where(x => x.MessageId == id)
-                .OrderBy(x => x.Id)
-                .ToListAsync(ct)
-    )
-    .RequireAuthorization("admin");
-app.MapPost(
-        "/api/sync/{id}/retry",
-        async (string id, SchedulingService service, HttpContext ctx, CancellationToken ct) =>
-            await service.RetrySync(
-                id,
-                // ! 是空断言运算符："我保证非空，编译器别警告"（不生成运行时代码）。
-                ctx.User.Identity!.Name!,
-                ctx.Request.Headers["Idempotency-Key"].ToString(),
-                ctx.TraceIdentifier,
-                ct
-            )
-    )
-    .RequireAuthorization("admin");
-app.MapGet(
-        "/api/patients",
-        async (ClinicDb db, HttpContext ctx, CancellationToken ct) =>
-            await db.Patients.AsNoTracking().VisibleTo(ctx.User).OrderBy(x => x.Id).ToListAsync(ct)
-    )
-    .RequireAuthorization();
-app.MapGet(
-        "/api/resources",
-        async (ClinicDb db, CancellationToken ct) =>
-            await db.Resources.AsNoTracking().OrderBy(x => x.Id).ToListAsync(ct)
-    )
-    .RequireAuthorization();
+app.MapOpenApi("/api/openapi/{documentName}.json").RequireAuthorization("ois");
 
 // SPA 静态文件托管：UseDefaultFiles/UseStaticFiles ≈ Spring 的 classpath:/static 资源映射。
 app.UseDefaultFiles();

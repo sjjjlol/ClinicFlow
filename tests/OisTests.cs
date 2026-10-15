@@ -1,6 +1,5 @@
 using ClinicFlow;
 using ClinicFlow.Ois;
-using ClinicFlow.Scheduling;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 
@@ -82,6 +81,22 @@ public class OisRulesTests
             "Physicist",
             now.Date.AddHours(9)
         );
+    }
+
+    [Theory]
+    [InlineData(1, 60)]
+    [InlineData(0, 16)]
+    [InlineData(0, 0)]
+    [InlineData(0, -15)]
+    [InlineData(0, 255)]
+    public void Booking_rejects_unaligned_or_invalid_duration(int minute, int duration)
+    {
+        var w = Create();
+        var start = now.AddHours(1).AddMinutes(minute);
+        Assert.Equal("invalid_time", Assert.Throws<BusinessException>(() => Run(w, "book",
+            new(Kind: "Consultation", PatientId: 1, ResourceId: "clinician",
+                StartUtc: start, EndUtc: start.AddMinutes(duration)), "Scheduler")).Code);
+        Assert.Empty(w.Reservations);
     }
 
     [Fact]
@@ -389,7 +404,7 @@ public class OisRulesTests
 
 public class OisDatabaseTests : IAsyncLifetime
 {
-    readonly SchedulingTests fixture = new();
+    readonly DatabaseFixture fixture = new();
 
     public Task InitializeAsync() => fixture.InitializeAsync();
 

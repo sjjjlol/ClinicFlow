@@ -3,8 +3,7 @@ import { Client } from './auth.mjs';
 const path='/api/ois/commands/';
 const guest=new Client();
 assert.equal((await guest.request('/api/ois/workspace')).status,401);
-const [scheduler,clinician,physicist,admin]=await Promise.all(['scheduler','clinician','physicist','admin'].map(u=>new Client().login(u)));
-assert.equal((await admin.request('/api/ois/workspace')).status,403);
+const [scheduler,clinician,physicist]=await Promise.all(['scheduler','clinician','physicist'].map(u=>new Client().login(u)));
 assert.equal((await scheduler.request(path+'case',{patientId:1,text:'forbidden'},crypto.randomUUID())).status,403);
 assert.equal((await clinician.request(path+'case',{patientId:1,text:'missing-key'})).status,400);
 async function send(client,op,command,key=crypto.randomUUID()){const r=await client.request(path+op,command,key);assert.equal(r.status,200,JSON.stringify(r.body));return r.body.targetId;}
@@ -28,5 +27,9 @@ assert.ok(state.reservations.find(x=>x.reservation.id===id).blockers.includes('�
 assert.equal(state.plans.find(p=>p.id===planId).reviewedBy,'clinician');
 assert.equal((await scheduler.request(path+'cancel',{id,version:1,reason:'过期版本'},crypto.randomUUID())).body.code,'version_conflict');
 scheduler.token='';assert.equal((await scheduler.request(path+'cancel',{id,version:3,reason:'无CSRF'},crypto.randomUUID())).status,400);
-if(process.env.Legacy__Enabled!=='true')assert.equal((await clinician.request('/api/agent/config')).status,404);
+for (const endpoint of ['/api/agent/config','/api/appointments','/api/resources','/api/patients','/api/sync','/api/imaging/studies','/api/fhir/metadata']) assert.equal((await clinician.request(endpoint)).status,404);
+assert.equal((await clinician.request('/api/auth/register',{username:'removed',password:'unused-password',displayName:'removed'})).status,404);
+const schema=(await clinician.request('/api/openapi/v1.json')).body;
+assert.ok(Object.keys(schema.paths).every(p=>p.startsWith('/api/auth/')||p.startsWith('/api/ois/')||p==='/api/health'));
+assert.ok(schema.paths['/api/ois/commands/{operation}'].post.parameters.some(p=>p.name==='Idempotency-Key'));
 console.log('PASS OIS HTTP: roles, CSRF, plan registration/review, release blockers, conflicts, cancel/restore, versions and idempotency');

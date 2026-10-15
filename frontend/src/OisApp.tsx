@@ -146,7 +146,6 @@ export default function OisApp() {
   if (!user)
     return (
       <Auth
-        staffOnly
         initialError={error}
         onLogin={(u) => {
           setUser(u);
@@ -160,7 +159,6 @@ export default function OisApp() {
         <h1>此账号没有 OIS 工作台权限</h1>
         <p>请使用 scheduler、clinician 或 physicist 账号。</p>
         <button onClick={logout}>退出登录</button>
-        <a href="/legacy">打开旧版学习模块</a>
       </div>
     );
   if (!data)
@@ -825,10 +823,6 @@ export default function OisApp() {
                       !x.reservation.caseId,
                   )
                   .map((x) => reservationCard(x.reservation, x.blockers))}
-                <p className="ois-muted">
-                  影像浏览保留在 <a href="/legacy">旧版影像学习入口</a>
-                  ，使用旧预约记录；本 MVP 不解析放疗计划影像。
-                </p>
               </section>
             </>
           )}

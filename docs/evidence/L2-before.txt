@@ -1,2 +1,0 @@
-First response lost after commit; caller retries same identity.
-L2 fixed=false; deliveries=2; durable side effects=2

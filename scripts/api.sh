@@ -4,10 +4,7 @@ cd "$(dirname "$0")/.."
 set -a
 source .env
 set +a
-export ConnectionStrings__Clinic="Server=127.0.0.1;Port=3308;Database=clinicflow;User=clinicflow;Password=$DB_PASSWORD"
-export Imaging__Password="${INTEGRATION_TOKEN}"
-export Imaging__BaseUrl="http://127.0.0.1:${ORTHANC_PORT:-8042}/"
-export ASPNETCORE_URLS=http://127.0.0.1:5080
+export ConnectionStrings__Clinic="Server=127.0.0.1;Port=${DB_PORT:-3308};Database=clinicflow;User=clinicflow;Password=$DB_PASSWORD"
+export ASPNETCORE_URLS=http://127.0.0.1:${APP_PORT:-5080}
 export ASPNETCORE_ENVIRONMENT=Development
-if [[ "${Legacy__Enabled:-false}" == "true" && ! -d agent-runtime/node_modules ]]; then npm --prefix agent-runtime ci; fi
 exec ./scripts/dotnet.sh run --project backend

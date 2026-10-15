@@ -3,7 +3,6 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using ClinicFlow.Scheduling;
 using Microsoft.EntityFrameworkCore;
 using MySqlConnector;
 
@@ -11,7 +10,7 @@ namespace ClinicFlow.Ois;
 
 public class OisService(ClinicDb db, TimeProvider clock)
 {
-    static readonly JsonSerializerOptions Json = SchedulingService.Json;
+    static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new UtcDateTimeConverter() } };
 
     public async Task<OisWorkflow> Load(CancellationToken ct) =>
         new()

@@ -1,83 +1,70 @@
 # 运行与验证手册
 
-从[文档导读](README.md)选择任务；本页命令在仓库根目录执行。测试结果统一记录在[验收文档](acceptance.md)。
+在仓库根目录执行命令。业务操作见 [OIS 手册](ois-runbook.md)。已有数据库升级前先备份，删除范围及恢复说明见[数据库设计](database-design.md)。
 
-## Run with Docker / 中文一键启动
-
-Prerequisites: Docker with Compose, Bash, curl and OpenSSL. No local .NET or Node installation is required for this path.
+## Docker
 
 ```sh
-git clone git@github.com:sjjjlol/ClinicFlow.git
-cd ClinicFlow
 ./scripts/start.sh
 ```
 
-Open **http://localhost:5080**. The first build downloads pinned images and can take several minutes. The script generates a local, ignored `.env`, starts MySQL and the mock receiver, applies EF migrations, seeds fictional catalog data, and serves the built React UI from ASP.NET Core.
+需要 Docker Compose、Bash、curl、OpenSSL。脚本保留已有 `.env` 或生成随机密码，启动 MySQL 和应用并自动迁移。访问 http://localhost:5080。
 
-Use **注册预约账号** on the login page to create a personal account. Registered users see **我的预约**, can book only for themselves, and can reschedule/cancel before the appointment starts. Staff verify prerequisites and confirm appointments; after the scheduled end, Scheduler records **Completed**. See [account and lifecycle guide](accounts-and-lifecycle.md).
+三个账号：`scheduler`、`clinician`、`physicist`；密码见 `.env` 的 `DEMO_PASSWORD`。修改环境变量不会重置已有账号密码。无患者注册入口。
 
-Demo usernames: `scheduler`, `taskoperator`, `admin`. Read **DEMO_PASSWORD** from your local `.env` and use it for all three accounts. Passwords are hashed on first seed; editing `.env` does not rotate existing database password hashes. Demo roles have different permissions; Admin does not inherit scheduling/task privileges.
+停止且保留数据：`docker compose --profile full down`。日志：`docker compose logs --tail 100 app`。默认 DB_PORT=3308、APP_PORT=5080，可在 `.env` 配置。另起实例须隔离 Compose 项目名和端口。
 
-停止：`docker compose --profile full down`（保留数据）。重置：`docker compose --profile full down -v`（删除本项目数据库、外部去重和会话密钥卷；仅用于清除虚构演示数据）。不要在本地API占用5080时启动容器API。
+## 本机开发
 
-Ports are loopback-only: UI/API 5080, MySQL 3308, receiver 5090. Override APP_PORT/DB_PORT/MOCK_PORT for an isolated second Compose project. Compose intentionally uses Development cookies on localhost HTTP; public hosting would require HTTPS, production configuration and operational work outside this demo.
-
-## Local debugging
-
-Pinned baseline: .NET SDK **10.0.401**, ASP.NET runtime/OpenAPI **10.0.12**, EF Core **9.0.20**, Pomelo **9.0.0**, MySQL **8.4.8**, Node **24.13.1**, React **19.2.0**, TypeScript **5.9.3**, Vite **7.3.6**. Lockfiles are committed. [Version rationale](adr/001-platform.md).
+需要 global.json 指定的 .NET SDK 和 Node（CI 使用 24.13.1）。
 
 ```sh
 ./scripts/configure.sh
-docker compose up -d --build --wait  # infrastructure only; app is in the full profile
-npm --prefix agent-runtime ci
-./scripts/dotnet.sh tool restore
+docker compose up -d --wait
 ./scripts/api.sh
-# another terminal
-cd frontend && npm ci && npm run dev
 ```
 
-Open http://127.0.0.1:5173. Vite proxies `/api` and `/fhir` to the local API. `scripts/dotnet.sh` uses a global SDK if installed, otherwise `~/.local/share/clinicflow-dotnet/dotnet`. Install the pinned SDK through Microsoft's .NET download if neither exists. Use one local API process; restart it after backend edits.
-
-## Verification
+另一个终端：
 
 ```sh
-npm --prefix agent-runtime ci && npm --prefix agent-runtime test
-./scripts/test.sh                              # isolated clinicflow_tests database
-./scripts/http-tests.sh                        # running local API; loads .env itself
-node --test mock-external/receiver.test.mjs     # isolated receiver restart/lost-response test
-./scripts/upgrade-drill.sh                     # isolated upgrade + actual backup restoration
-./scripts/labs.sh L1                           # explicit faulty lab
-./scripts/labs.sh L2
-./scripts/labs.sh L3 100000
+npm --prefix frontend ci
+npm --prefix frontend run dev
 ```
 
-Browser tests require Node plus a running UI/API. Export `.env` locally without printing secrets:
+浏览器访问 http://localhost:5173。Vite 默认代理 5080；自定义 API 端口时也需调整 Vite 代理。不要同时启动占用相同端口的容器 app 和本机 API。
+
+## 验证
 
 ```sh
-set -a; source .env; set +a
-cd frontend
-npx playwright install chromium
-npm run test:e2e
-# optional: PW_CHANNEL=chrome npm run test:e2e (installed Chrome)
-# BASE_URL=http://127.0.0.1:5080 tests the bundled container UI
+# 仅规则，无需数据库
+./scripts/dotnet.sh test tests --filter FullyQualifiedName~OisRulesTests
+# 需要 db，使用隔离的 clinicflow_tests 库
+./scripts/test.sh
+npm --prefix frontend run build
+npm --prefix frontend run format:check
+# 需要 API，会在目标应用数据库写入演示数据
+./scripts/http-tests.sh
+# 隔离库的迁移与备份恢复演练
+./scripts/upgrade-drill.sh
 ```
 
-With `.env` exported, `node tests/http-integration.mjs` briefly stops/restarts the mock container and verifies real outage recovery. `docker compose stop mock` / `docker compose start mock` also demonstrate it manually. After five failures, Admin must retry. Fault-control HTTP endpoints are disabled in normal Compose.
+浏览器测试需 API 与 Vite，或用 BASE_URL 指向容器应用：
 
-CI independently starts the container from fresh volumes, restores locked dependencies, builds, runs MySQL/HTTP/receiver/browser tests, exercises labs and upgrades, then publishes a portable ASP.NET + React + Pi runtime artifact (requires Node 24.13.1 on the target host). Dockerfile provides repeatable container packaging; there is no automatic public deployment. [Acceptance evidence](acceptance.md) and [development history](acceptance.md#history) distinguish actual execution from pending checks.
+```sh
+set -a
+source .env
+set +a
+(cd frontend && npx playwright install chromium)
+npm --prefix frontend run test:e2e
+```
 
+可设置 `PW_CHANNEL=chrome` 使用已安装 Chrome。HTTP 默认访问 APP_PORT，可由 API_URL 覆盖；Playwright 默认 5173，可由 BASE_URL 覆盖。测试请使用隔离演示环境。
 
-## 可选扩展与排障
+CI 执行构建、OIS 规则/数据库/API/浏览器测试、迁移恢复及容器冒烟，并生成便携交付包。没有自动公网部署。
 
-预约助手配置见[Agent 指南](appointment-agent.md)；影像启动、权限、查看器与停机排障见[影像手册](imaging/README.md#operations)。Docker 原理另查[Docker 教程](docker-crash-course.md)。
+## 排障
 
-| 问题 | 处理入口 |
-|---|---|
-| 5080 被占用 | 选择本机 API 或容器 app，避免同时绑定 |
-| 修改 .env 后密码未变化 | 演示密码只在首次种子时散列；修改变量不等于轮换数据库密码 |
-| 登录 429 | 按 Retry-After 等待限流窗口；不要反复重试 |
-| 401 / CSRF 错误 | 重新登录并刷新令牌；见 API 契约 |
-| 新功能不显示 | 确认访问端口、重新构建 app、检查实际容器版本 |
-| 外部同步失败 | Admin 查看 attempts；区分可重试故障与永久失败，达到上限后人工重试 |
-
-HTTP 和浏览器测试会写入其目标 API 的数据库，优先使用隔离实例；后端 test.sh 使用 clinicflow_tests。停机和升级实验的副作用见对应脚本与影像手册。
+- 登录 429：遵守 Retry-After；CSRF 错误：刷新令牌或重新登录。
+- 403：核对三个工作人员角色及操作责任角色。
+- 治疗受阻：核对预约时段、身份、当前计划审核/验证、处方版本和机器状态。
+- 升级失败：停止应用写入，检查迁移日志与备份，不要通过清空应用数据库绕过问题。
