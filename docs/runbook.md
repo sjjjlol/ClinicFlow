@@ -44,6 +44,8 @@ npm --prefix frontend run build
 npm --prefix frontend run format:check
 # 需要 API，会在目标应用数据库写入演示数据
 ./scripts/http-tests.sh
+# 仅针对打包应用/容器，验证首页、资源与已移除路径
+node tests/http-ui.mjs
 # 隔离库的迁移与备份恢复演练
 ./scripts/upgrade-drill.sh
 ```

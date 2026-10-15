@@ -243,6 +243,7 @@ app.MapMethods(
     )
     .ExcludeFromDescription(); // 从 OpenAPI 文档中排除
 
+app.MapFallbackToFile("/", "index.html");
 // OIS uses one root page; unknown paths must not revive removed UI/API entry points.
 app.MapFallback(() => Results.NotFound(new { code = "not_found" })).ExcludeFromDescription();
 app.Run(); // 启动 Kestrel（内置 Web 服务器 ≈ 内嵌 Tomcat）并阻塞监听
