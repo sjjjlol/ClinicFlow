@@ -591,3 +591,24 @@
     font-size: 19px;
   }
 }
+
+.ois-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+.ois-guide-step {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 16px;
+  border: 1px solid #dde5e5;
+  border-radius: 12px;
+}
+.ois-guide-step h3 {
+  margin: 0;
+}
+.ois-guide-step p {
+  flex: 1;
+  line-height: 1.7;
+}

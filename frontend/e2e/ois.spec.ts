@@ -76,7 +76,9 @@ test("OIS roles cooperate on signed prescription, plan review and experiment sch
   await page.getByRole("button", { name: "退出登录", exact: true }).click();
   await expect(page.getByLabel("账号", { exact: true })).toBeVisible();
   await login(page, "physicist");
-  await page.getByRole("button", { name: "◎ 患者与诊疗", exact: true }).click();
+  await page
+    .getByRole("button", { name: "◎ 治疗计划与验证", exact: true })
+    .click();
   care = page
     .locator("article")
     .filter({ has: page.getByRole("heading", { name: title, exact: true }) });
@@ -100,7 +102,9 @@ test("OIS roles cooperate on signed prescription, plan review and experiment sch
   await page.getByLabel("开始时间（上海）").fill(day + "T09:00");
   await page.getByLabel("结束时间（上海）").fill(day + "T09:30");
   await confirm(page);
-  await page.getByRole("button", { name: "▦ 预约日历", exact: true }).click();
+  await page
+    .getByRole("button", { name: "▦ 诊疗与实验日历", exact: true })
+    .click();
   await page.getByLabel("日历日期").fill(day);
   await expect(
     page.getByRole("button", { name: new RegExp("物理实验 · " + title) }),

@@ -17,6 +17,7 @@ import {
   type Workspace,
 } from "./ois-types";
 import "./ois.css";
+import { workspaces, workspaceNav, isRoleReservation } from "./ois-workspace";
 
 const text = (name: string, label: string, optional = false): Field => ({
   name,
@@ -41,20 +42,12 @@ const dateFields = (start = nextSlot(), end?: string): Field[] => [
       localTime(new Date(new Date(start + "+08:00").getTime() + 30 * 60000)),
   },
 ];
-const nav = [
-  { id: "home", name: "我的工作台", icon: "◈" },
-  { id: "calendar", name: "预约日历", icon: "▦" },
-  { id: "patients", name: "患者与诊疗", icon: "◎" },
-  { id: "machines", name: "机器与占用", icon: "▤" },
-  { id: "tasks", name: "协作待办", icon: "☷" },
-  { id: "history", name: "操作历史", icon: "↺" },
-];
 
 export default function OisApp() {
   const [user, setUser] = useState<User | null>(null),
     [ready, setReady] = useState(false);
   const [data, setData] = useState<Workspace | null>(null),
-    [view, setView] = useState("home");
+    [requestedView, setView] = useState("home");
   const [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [busy, setBusy] = useState(false);
@@ -85,6 +78,9 @@ export default function OisApp() {
   }, [user]);
   useEffect(() => {
     const expired = () => {
+      setView("home");
+      setSearch("");
+      setNotice("");
       setUser(null);
       setData(null);
       setEditor(null);
@@ -132,6 +128,9 @@ export default function OisApp() {
   async function logout() {
     try {
       await api("/api/auth/logout", {});
+      setView("home");
+      setSearch("");
+      setNotice("");
       setUser(null);
       setData(null);
       setEditor(null);
@@ -148,6 +147,8 @@ export default function OisApp() {
       <Auth
         initialError={error}
         onLogin={(u) => {
+          setView("home");
+          setPatientId(1);
           setUser(u);
           setError("");
         }}
@@ -175,6 +176,14 @@ export default function OisApp() {
     clinician = role === "Clinician",
     physicist = role === "Physicist",
     scheduler = role === "Scheduler";
+  const workspace = workspaces[role];
+  const nav = workspaceNav(role);
+  const view = nav.some((item) => item.id === requestedView)
+    ? requestedView
+    : "home";
+  const roleReservations = data.reservations.filter(({ reservation }) =>
+    isRoleReservation(role, reservation),
+  );
   const patientName = (id: number | null) =>
     data.patients.find((p) => p.id === id)?.name || "无需患者到场";
   const resourceName = (id: string) =>
@@ -191,15 +200,9 @@ export default function OisApp() {
     }));
   const myTasks = data.tasks.filter((t) => t.role === role && !t.resolvedBy);
   const today = localTime(new Date()).slice(0, 10);
-  const todayBookings = data.reservations
+  const todayBookings = roleReservations
     .filter(
-      ({ reservation: r }) =>
-        localTime(r.startUtc).slice(0, 10) === today &&
-        (physicist
-          ? r.kind === "Experiment"
-          : clinician
-            ? r.kind === "Consultation" || r.kind === "Treatment"
-            : r.patientId !== null),
+      ({ reservation: r }) => localTime(r.startUtc).slice(0, 10) === today,
     )
     .sort((a, b) =>
       a.reservation.startUtc.localeCompare(b.reservation.startUtc),
@@ -497,11 +500,15 @@ export default function OisApp() {
             </div>
           </div>
         ))}
-        <h3>预约与治疗历史</h3>
+        <h3>{physicist ? "物理实验历史" : "预约与治疗历史"}</h3>
         {data!.reservations
-          .filter((x) => x.reservation.caseId === c.id)
+          .filter(
+            (x) =>
+              x.reservation.caseId === c.id &&
+              isRoleReservation(role, x.reservation),
+          )
           .map((x) => reservationCard(x.reservation, x.blockers))}
-        {data!.deliveries
+        {(clinician ? data!.deliveries : [])
           .filter((d) =>
             data!.reservations.some(
               (x) =>
@@ -579,9 +586,7 @@ export default function OisApp() {
                   ? label(role) + "工作台"
                   : nav.find((n) => n.id === view)?.name}
               </h1>
-              <p className="ois-muted">
-                让预约、审核与执行的每一步，都有明确的下一步。
-              </p>
+              <p className="ois-muted">{workspace.description}</p>
             </div>
             <button
               onClick={() =>
@@ -609,7 +614,7 @@ export default function OisApp() {
                 <article>
                   <small>今日安排</small>
                   <strong>{todayBookings.length}</strong>
-                  <span>门诊 / 治疗 / 验证</span>
+                  <span>{workspace.schedule}</span>
                 </article>
                 <article>
                   <small>我的待办</small>
@@ -617,18 +622,24 @@ export default function OisApp() {
                   <span>{myTasks.filter((t) => !t.readBy).length} 条未读</span>
                 </article>
                 <article>
-                  <small>待放行治疗</small>
+                  <small>{physicist ? "待物理验证计划" : "待放行治疗"}</small>
                   <strong>
-                    {
-                      data.reservations.filter(
-                        (x) =>
-                          x.reservation.kind === "Treatment" &&
-                          x.reservation.status === "Booked" &&
-                          x.blockers.length > 0,
-                      ).length
-                    }
+                    {physicist
+                      ? data.plans.filter(
+                          (p) =>
+                            p.validation === "Pending" &&
+                            data.cases.some((c) => c.currentPlanId === p.id),
+                        ).length
+                      : data.reservations.filter(
+                          (x) =>
+                            x.reservation.kind === "Treatment" &&
+                            x.reservation.status === "Booked" &&
+                            x.blockers.length > 0,
+                        ).length}
                   </strong>
-                  <span>预约保留，执行受保护</span>
+                  <span>
+                    {physicist ? "当前计划版本待验证" : "预约保留，执行受保护"}
+                  </span>
                 </article>
                 <article>
                   <small>可用机器</small>
@@ -642,6 +653,20 @@ export default function OisApp() {
                   <span>验证与治疗共用时段</span>
                 </article>
               </div>
+              <section className="ois-panel" aria-labelledby="operation-guide">
+                <h2 id="operation-guide">{label(role)}操作指引</h2>
+                <div className="ois-guide-grid">
+                  {workspace.guide.map((step) => (
+                    <article className="ois-guide-step" key={step.title}>
+                      <h3>{step.title}</h3>
+                      <p className="ois-muted">{step.text}</p>
+                      <button onClick={() => setView(step.view)}>
+                        {step.action} →
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              </section>
               <div className="ois-actions">
                 {scheduler && (
                   <>
@@ -744,8 +769,8 @@ export default function OisApp() {
                 }}
               />
               <section className="ois-panel">
-                <h2>全部预约与占用（含已取消）</h2>
-                {data.reservations
+                <h2>本角色工作安排（含已取消）</h2>
+                {roleReservations
                   .slice()
                   .sort((a, b) =>
                     b.reservation.startUtc.localeCompare(
@@ -819,6 +844,7 @@ export default function OisApp() {
                 {data.reservations
                   .filter(
                     (x) =>
+                      isRoleReservation(role, x.reservation) &&
                       x.reservation.patientId === patientId &&
                       !x.reservation.caseId,
                   )
@@ -929,7 +955,7 @@ export default function OisApp() {
                                 t.targetId),
                           );
                           if (r) setSelected(r.id);
-                          else if (c) {
+                          else if (c && !scheduler) {
                             setPatientId(c.patientId);
                             setView("patients");
                           }
@@ -977,6 +1003,7 @@ export default function OisApp() {
             <section className="ois-panel">
               <h2>追加式操作历史</h2>
               {data.audits
+                .filter((a) => a.role === role)
                 .slice()
                 .reverse()
                 .map((a) => (
