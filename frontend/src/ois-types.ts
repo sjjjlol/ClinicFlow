@@ -2,11 +2,18 @@ export type Entity = { id: string; version: number };
 export type CareCase = Entity & {
   patientId: number;
   title: string;
+  terminated: boolean;
+  terminationReason: string;
   currentPrescriptionId: string | null;
   currentPlanId: string | null;
 };
 export type Prescription = Entity & {
   caseId: string;
+  treatmentSite: string;
+  totalDoseGy: number;
+  fractionDoseGy: number;
+  fractions: number;
+  treatmentMaterials: string;
   diagnosis: string;
   content: string;
   reason: string;
@@ -18,6 +25,14 @@ export type Plan = Entity & {
   caseId: string;
   prescriptionId: string;
   revision: number;
+  verificationMethod: string;
+  equipment: string;
+  measurementConditions: string;
+  expectedValues: string;
+  standardName: string;
+  standardVersion: string;
+  acceptanceCriteria: string;
+  allowedDeviation: string;
   summary: string;
   attachment: string;
   machineId: string;
@@ -35,6 +50,13 @@ export type Resource = Entity & {
   reason: string;
 };
 export type Reservation = Entity & {
+  measuredValues: string;
+  resultAttachment: string;
+  validationOutcome: string;
+  validationNote: string;
+  failureType: string;
+  signedBy: string;
+  signedUtc: string | null;
   kind: string;
   patientId: number | null;
   caseId: string | null;
@@ -66,6 +88,12 @@ export type WorkTask = Entity & {
   createdUtc: string;
 };
 export type Workspace = {
+  drafts: (Entity & {
+    caseId: string;
+    operation: string;
+    payload: string;
+    caseVersion: number;
+  })[];
   cases: CareCase[];
   prescriptions: Prescription[];
   plans: Plan[];
@@ -88,7 +116,7 @@ export type Command = Record<string, string | number | boolean>;
 export type Field = {
   name: string;
   label: string;
-  type?: "text" | "textarea" | "datetime-local" | "checkbox";
+  type?: "text" | "textarea" | "datetime-local" | "checkbox" | "number";
   options?: { value: string; label: string }[];
   value?: string | boolean;
   optional?: boolean;
@@ -99,6 +127,8 @@ export type Editor = {
   command: Command;
   fields: Field[];
   context?: string;
+  draftVersion?: number;
+  initialValues?: Record<string, string | boolean>;
 };
 export const labels: Record<string, string> = {
   Scheduler: "预约人员",

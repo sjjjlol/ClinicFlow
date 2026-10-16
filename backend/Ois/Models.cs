@@ -14,6 +14,8 @@ public class CareCase : IOisEntity
     public int Version { get; set; } = 1;
     public int PatientId { get; set; }
     public string Title { get; set; } = "";
+    public bool Terminated { get; set; }
+    public string TerminationReason { get; set; } = "";
     public string? CurrentPrescriptionId { get; set; }
     public string? CurrentPlanId { get; set; }
 }
@@ -25,6 +27,11 @@ public class Prescription : IOisEntity
     public int Version { get; set; } = 1;
     public string CaseId { get; set; } = "";
     public string? SupersedesId { get; set; }
+    public string TreatmentSite { get; set; } = "";
+    public decimal TotalDoseGy { get; set; }
+    public decimal FractionDoseGy { get; set; }
+    public int Fractions { get; set; }
+    public string TreatmentMaterials { get; set; } = "";
     public string Diagnosis { get; set; } = "";
     public string Content { get; set; } = "";
     public string Reason { get; set; } = "";
@@ -39,6 +46,14 @@ public class TreatmentPlan : IOisEntity
     public string CaseId { get; set; } = "";
     public string PrescriptionId { get; set; } = "";
     public int Revision { get; set; }
+    public string VerificationMethod { get; set; } = "";
+    public string Equipment { get; set; } = "";
+    public string MeasurementConditions { get; set; } = "";
+    public string ExpectedValues { get; set; } = "";
+    public string StandardName { get; set; } = "";
+    public string StandardVersion { get; set; } = "";
+    public string AcceptanceCriteria { get; set; } = "";
+    public string AllowedDeviation { get; set; } = "";
     public string Summary { get; set; } = "";
     public string Attachment { get; set; } = "";
     public string MachineId { get; set; } = "";
@@ -67,6 +82,13 @@ public class Reservation : IOisEntity
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
     public int Version { get; set; } = 1;
+    public string MeasuredValues { get; set; } = "";
+    public string ResultAttachment { get; set; } = "";
+    public string ValidationOutcome { get; set; } = "";
+    public string ValidationNote { get; set; } = "";
+    public string FailureType { get; set; } = "";
+    public string SignedBy { get; set; } = "";
+    public DateTime? SignedUtc { get; set; }
     public string Kind { get; set; } = "Consultation";
     public int? PatientId { get; set; }
     public string? CaseId { get; set; }
@@ -107,6 +129,17 @@ public class OisTask : IOisEntity
     public DateTime? ResolvedUtc { get; set; }
 }
 
+public class OisDraft : IOisEntity
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public int Version { get; set; } = 1;
+    public string CaseId { get; set; } = "";
+    public string Actor { get; set; } = "";
+    public string Operation { get; set; } = "";
+    public string Payload { get; set; } = "";
+    public int CaseVersion { get; set; }
+}
+
 public class OisAudit
 {
     public long Id { get; set; }
@@ -130,6 +163,8 @@ public static class OisModel
     public static void Configure(ModelBuilder b)
     {
         Configure<CareCase>(b);
+        Configure<OisDraft>(b);
+        b.Entity<OisDraft>().HasIndex(x => new { x.CaseId, x.Actor, x.Operation }).IsUnique();
         Configure<Prescription>(b);
         Configure<TreatmentPlan>(b);
         Configure<OisResource>(b);
@@ -236,5 +271,22 @@ public record OisCommand(
     string Outcome = "",
     string FailureType = "",
     bool IdentityChecked = false,
+    string TreatmentSite = "",
+    decimal TotalDoseGy = 0,
+    decimal FractionDoseGy = 0,
+    int Fractions = 0,
+    string TreatmentMaterials = "",
+    string VerificationMethod = "",
+    string Equipment = "",
+    string MeasurementConditions = "",
+    string ExpectedValues = "",
+    string StandardName = "",
+    string StandardVersion = "",
+    string AcceptanceCriteria = "",
+    string AllowedDeviation = "",
+    string MeasuredValues = "",
+    string ResultAttachment = "",
+    string DraftJson = "",
+    int DraftVersion = 0,
     bool Available = true
 );

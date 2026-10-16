@@ -293,26 +293,54 @@ export default function OisApp() {
       context: `原安排：${patientName(r.patientId)} · ${resourceName(r.resourceId)} · ${displayTime(r.startUtc)} — ${displayTime(r.endUtc)}`,
     });
   }
-  function prescribe(c: CareCase) {
+  function openDraft(c: CareCase, e: Editor) {
+    const draft = data!.drafts.find(
+      (d) => d.caseId === c.id && d.operation === e.operation,
+    );
     open({
+      ...e,
+      draftVersion: draft?.version || 0,
+      initialValues: draft ? JSON.parse(draft.payload) : undefined,
+      context:
+        (e.context || "") +
+        (draft
+          ? ` 已恢复草稿${draft.caseVersion !== c.version ? "；关联版本已变化，请重新核对全部内容" : ""}。`
+          : ""),
+    });
+  }
+  function prescribe(c: CareCase) {
+    openDraft(c, {
       title: c.currentPrescriptionId ? "签署新处方版本" : "签署诊疗记录与处方",
       operation: "prescribe",
       command: { id: c.id, version: c.version },
       fields: [
         text("diagnosis", "诊疗记录 / 诊断"),
         text("text", "放疗处方（模拟）"),
+        text("treatmentSite", "治疗部位"),
+        { name: "totalDoseGy", label: "总剂量（Gy）", type: "number" },
+        { name: "fractionDoseGy", label: "单次剂量（Gy）", type: "number" },
+        { name: "fractions", label: "分次数", type: "number" },
+        text("treatmentMaterials", "治疗用品要求（无则填写无）"),
         ...(c.currentPrescriptionId ? [reason()] : []),
       ],
       context: "签署后保留历史，修改须产生新版本。处方变更后需要重新登记计划。",
     });
   }
   function registerPlan(c: CareCase) {
-    open({
+    openDraft(c, {
       title: "登记治疗计划版本",
       operation: "plan",
       command: { caseId: c.id, version: c.version },
       fields: [
         text("text", "外部计划摘要（模拟）"),
+        text("verificationMethod", "验证方式（如水模体剂量测量）"),
+        text("equipment", "验证设备与器材"),
+        text("measurementConditions", "测量条件"),
+        text("expectedValues", "预期测量值（含单位及测量点）"),
+        text("standardName", "规范名称"),
+        text("standardVersion", "规范版本"),
+        text("acceptanceCriteria", "验收指标"),
+        text("allowedDeviation", "允许偏差（含单位）"),
         { name: "resourceId", label: "计划使用机器", options: machineOptions },
         {
           name: "attachment",
@@ -356,9 +384,14 @@ export default function OisApp() {
             { value: "Equipment", label: "设备问题 → 停用机器" },
           ],
         },
+        text("measuredValues", "实测结果（含单位及测量点）"),
+        text("resultAttachment", "测量报告附件引用 / 文件编号"),
         text("text", "实验结果与依据（模拟）"),
       ],
-      context: `${resourceName(r.resourceId)} · ${data!.plans.find((p) => p.id === r.planId)?.summary}`,
+      context: (() => {
+        const p = data!.plans.find((p) => p.id === r.planId)!;
+        return `${resourceName(r.resourceId)} · 计划 v${p.revision} · ${p.verificationMethod} · ${p.equipment} · ${p.measurementConditions} · 预期：${p.expectedValues} · ${p.standardName} ${p.standardVersion} · ${p.acceptanceCriteria} · 允许偏差：${p.allowedDeviation}`;
+      })(),
     });
   }
   function reservationCard(r: Reservation, blockers: string[]) {
@@ -411,10 +444,10 @@ export default function OisApp() {
             <p className="ois-kicker">诊疗档案</p>
             <h2>{c.title}</h2>
           </div>
-          {clinician && (
+          {clinician && !c.terminated && (
             <button onClick={() => prescribe(c)}>签署诊疗记录 / 处方</button>
           )}
-          {physicist && (
+          {physicist && !c.terminated && (
             <button
               disabled={!c.currentPrescriptionId}
               onClick={() => registerPlan(c)}
@@ -423,6 +456,39 @@ export default function OisApp() {
             </button>
           )}
         </div>
+        {c.terminated && (
+          <p className="ois-alert">已终止：{c.terminationReason}</p>
+        )}
+        {clinician && !c.terminated && (
+          <div className="ois-actions">
+            <button
+              onClick={() =>
+                open({
+                  title: "补充备注",
+                  operation: "note",
+                  command: { id: c.id, version: c.version },
+                  fields: [text("text", "补充备注")],
+                  context: "备注追加到历史，不改变已签署方案。",
+                })
+              }
+            >
+              补充备注
+            </button>
+            <button
+              onClick={() =>
+                open({
+                  title: "终止诊疗方案",
+                  operation: "terminate",
+                  command: { id: c.id, version: c.version },
+                  fields: [reason()],
+                  context: "终止后阻止后续治疗；历史保留。",
+                })
+              }
+            >
+              终止方案
+            </button>
+          </div>
+        )}
         {data!.prescriptions
           .filter((p) => p.caseId === c.id)
           .map((rx) => (
@@ -436,6 +502,12 @@ export default function OisApp() {
                 {rx.diagnosis} · {displayTime(rx.signedUtc)}
               </summary>
               <p className="ois-pre">{rx.content}</p>
+              <p>
+                治疗部位：{rx.treatmentSite || "未记录"} · 总剂量：
+                {rx.totalDoseGy} Gy · 单次剂量：{rx.fractionDoseGy} Gy ·{" "}
+                {rx.fractions} 次
+              </p>
+              <p>治疗用品：{rx.treatmentMaterials || "未记录"}</p>
               <small>
                 {rx.signedBy} 签署 {rx.reason && " · 更正原因：" + rx.reason}
               </small>
@@ -465,6 +537,36 @@ export default function OisApp() {
               </span>
             </div>
             <p className="ois-pre">{p.summary}</p>
+            <p>
+              验证方式：{p.verificationMethod} · 器材：{p.equipment}
+            </p>
+            <p>
+              测量条件：{p.measurementConditions} · 预期值：{p.expectedValues}
+            </p>
+            <p>
+              规范：{p.standardName} {p.standardVersion} · 指标：
+              {p.acceptanceCriteria} · 允许偏差：{p.allowedDeviation}
+            </p>
+            {data!.reservations
+              .filter(
+                ({ reservation: r }) =>
+                  r.planId === p.id && r.validationOutcome,
+              )
+              .map(({ reservation: r }) => (
+                <details className="ois-record" key={r.id}>
+                  <summary>
+                    {label(r.validationOutcome)} · {r.signedBy} ·{" "}
+                    {r.signedUtc && displayTime(r.signedUtc)}
+                  </summary>
+                  <p>
+                    实测：{r.measuredValues} · 报告：{r.resultAttachment}
+                  </p>
+                  <p>
+                    {r.validationNote}{" "}
+                    {r.failureType && ` · ${label(r.failureType)}`}
+                  </p>
+                </details>
+              ))}
             <p className="ois-muted">
               {resourceName(p.machineId)} · 登记：{p.registeredBy}
               {p.attachment && " · 附件引用：" + p.attachment}
@@ -476,14 +578,19 @@ export default function OisApp() {
             )}
             <div className="ois-actions">
               {clinician &&
+                !c.terminated &&
                 c.currentPlanId === p.id &&
                 !p.reviewedBy &&
                 p.validation !== "Failed" && (
                   <button onClick={() => review(p)}>审核此版本</button>
                 )}
               {clinician &&
+                !c.terminated &&
                 c.currentPlanId === p.id &&
-                p.validation === "Pending" && (
+                !!p.reviewedBy &&
+                (p.validation === "Pending" ||
+                  (p.validation === "Failed" &&
+                    p.failureType !== "Clinical")) && (
                   <button
                     onClick={() =>
                       book("Experiment", p.machineId, undefined, p)
@@ -1262,6 +1369,18 @@ export default function OisApp() {
           error={error}
           onClose={() => !busy && setEditor(null)}
           onSubmit={(c) => execute(editor.operation, c)}
+          onSaveDraft={
+            editor.operation === "prescribe" || editor.operation === "plan"
+              ? (values) =>
+                  execute("save-draft", {
+                    caseId: editor.command.caseId || editor.command.id,
+                    version: editor.command.version,
+                    draftVersion: editor.draftVersion || 0,
+                    kind: editor.operation,
+                    draftJson: JSON.stringify(values),
+                  })
+              : undefined
+          }
         />
       )}
     </div>
@@ -1274,18 +1393,21 @@ function CommandEditor({
   error,
   onClose,
   onSubmit,
+  onSaveDraft,
 }: {
   editor: Editor;
   busy: boolean;
   error: string;
   onClose: () => void;
   onSubmit: (c: Command) => void;
+  onSaveDraft?: (values: Record<string, string | boolean>) => void;
 }) {
   const [values, setValues] = useState<Record<string, string | boolean>>(() =>
     Object.fromEntries(
       editor.fields.map((f) => [
         f.name,
-        f.value ??
+        editor.initialValues?.[f.name] ??
+          f.value ??
           (f.type === "checkbox" ? false : f.options?.[0]?.value || ""),
       ]),
     ),
@@ -1303,7 +1425,7 @@ function CommandEditor({
       command[f.name] =
         f.type === "datetime-local"
           ? new Date(String(value) + "+08:00").toISOString()
-          : f.name === "patientId"
+          : f.name === "patientId" || f.type === "number"
             ? Number(value)
             : value;
     }
@@ -1395,7 +1517,22 @@ function CommandEditor({
               ) : (
                 <input
                   type={f.type || "text"}
-                  step={f.type === "datetime-local" ? 900 : undefined}
+                  step={
+                    f.type === "datetime-local"
+                      ? 900
+                      : f.name === "fractions"
+                        ? 1
+                        : f.type === "number"
+                          ? "any"
+                          : undefined
+                  }
+                  min={
+                    f.type === "number"
+                      ? f.name === "fractions"
+                        ? 1
+                        : 0.000001
+                      : undefined
+                  }
                   required={!f.optional}
                   maxLength={1000}
                   value={String(values[f.name])}
@@ -1414,6 +1551,15 @@ function CommandEditor({
           </div>
         )}
         <div className="ois-actions">
+          {onSaveDraft && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onSaveDraft(values)}
+            >
+              保存草稿
+            </button>
+          )}
           {preview && (
             <button
               type="button"

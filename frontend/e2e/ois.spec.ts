@@ -71,6 +71,19 @@ test("OIS roles cooperate on signed prescription, plan review and experiment sch
     .click();
   await page.getByLabel("诊疗记录 / 诊断").fill("模拟诊断，无真实患者数据");
   await page.getByLabel("放疗处方（模拟）").fill("演示放疗处方");
+  await page.getByRole("button", { name: "保存草稿", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.reload();
+  await page.getByRole("button", { name: "◎ 患者与诊疗", exact: true }).click();
+  await care
+    .getByRole("button", { name: "签署诊疗记录 / 处方", exact: true })
+    .click();
+  await expect(page.getByLabel("放疗处方（模拟）")).toHaveValue("演示放疗处方");
+  await page.getByLabel("治疗部位").fill("模拟部位");
+  await page.getByLabel("总剂量（Gy）", { exact: true }).fill("60");
+  await page.getByLabel("单次剂量（Gy）", { exact: true }).fill("2");
+  await page.getByLabel("分次数", { exact: true }).fill("30");
+  await page.getByLabel("治疗用品要求（无则填写无）").fill("无");
   await confirm(page);
   await expect(care.getByText("演示放疗处方", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "退出登录", exact: true }).click();
@@ -84,6 +97,17 @@ test("OIS roles cooperate on signed prescription, plan review and experiment sch
     .filter({ has: page.getByRole("heading", { name: title, exact: true }) });
   await care.getByRole("button", { name: "登记计划版本", exact: true }).click();
   await page.getByLabel("外部计划摘要（模拟）").fill(title + " 计划");
+  for (const [field, value] of Object.entries({
+    "验证方式（如水模体剂量测量）": "水模体测量",
+    验证设备与器材: "模拟水箱、探测器",
+    测量条件: "模拟条件",
+    "预期测量值（含单位及测量点）": "测点 A 2 Gy",
+    规范名称: "演示规范",
+    规范版本: "1",
+    验收指标: "剂量偏差",
+    "允许偏差（含单位）": "演示阈值",
+  }))
+    await page.getByLabel(field, { exact: true }).fill(value);
   await page.getByLabel("计划使用机器").selectOption("linac-b");
   await page.getByLabel("外部附件引用 / 文件编号").fill("DEMO-PLAN-001");
   await confirm(page);

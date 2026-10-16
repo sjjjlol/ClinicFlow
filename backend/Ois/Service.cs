@@ -15,6 +15,7 @@ public class OisService(ClinicDb db, TimeProvider clock)
     public async Task<OisWorkflow> Load(CancellationToken ct) =>
         new()
         {
+            Drafts = await db.Set<OisDraft>().ToListAsync(ct),
             Cases = await db.Set<CareCase>().ToListAsync(ct),
             Prescriptions = await db.Set<Prescription>().ToListAsync(ct),
             Plans = await db.Set<TreatmentPlan>().ToListAsync(ct),
@@ -25,7 +26,7 @@ public class OisService(ClinicDb db, TimeProvider clock)
             Patients = await db.Patients.AsNoTracking().ToListAsync(ct),
         };
 
-    public async Task<object> Snapshot(CancellationToken ct)
+    public async Task<object> Snapshot(string actor, CancellationToken ct)
     {
         // Repeatable read keeps all tables and derived release status in one consistent view.
         await using var tx = await db.Database.BeginTransactionAsync(
@@ -33,7 +34,9 @@ public class OisService(ClinicDb db, TimeProvider clock)
             ct
         );
         var w = await Load(ct);
-        var audits = await db.Set<OisAudit>().OrderBy(x => x.Id).ToListAsync(ct);
+        var audits = await db.Set<OisAudit>()
+            .Where(x => x.Action != "save-draft" || x.Actor == actor)
+            .OrderBy(x => x.Id).ToListAsync(ct);
         var reservations = w
             .Reservations.Select(r => new
             {
@@ -44,6 +47,7 @@ public class OisService(ClinicDb db, TimeProvider clock)
         await tx.CommitAsync(ct);
         return new
         {
+            drafts = w.Drafts.Where(x => x.Actor == actor),
             w.Cases,
             w.Prescriptions,
             w.Plans,
@@ -73,12 +77,17 @@ public class OisService(ClinicDb db, TimeProvider clock)
                 .GetProperties()
                 .Any(p =>
                     p.PropertyType == typeof(string)
-                    && (p.GetValue(command) is not string s || s.Length > 4000)
+                    && (p.GetValue(command) is not string s || s.Length > (p.Name == "DraftJson" ? 64000 : 4000))
                 )
         )
             throw new BusinessException("invalid_input", "文本不能为空值或超过4000字符", 400);
         var id = Hash(JsonSerializer.Serialize(new[] { "ois", actor, role, key }));
-        var fingerprint = Hash(JsonSerializer.Serialize(new { op, command }, Json));
+        // Preserve fingerprints of pre-upgrade requests: absent new fields must not change replay keys.
+        var legacyNames = new HashSet<string> { "id", "version", "patientId", "caseId", "planId", "resourceId", "kind", "startUtc", "endUtc", "text", "diagnosis", "reason", "attachment", "outcome", "failureType", "identityChecked", "available" };
+        var fingerprintCommand = JsonSerializer.SerializeToElement(command, Json).EnumerateObject()
+            .Where(p => legacyNames.Contains(p.Name) || !(p.Value.ValueKind == JsonValueKind.String && p.Value.GetString() == "" || p.Value.ValueKind == JsonValueKind.Number && p.Value.GetDecimal() == 0))
+            .ToDictionary(p => p.Name, p => p.Value);
+        var fingerprint = Hash(JsonSerializer.Serialize(new { op, command = fingerprintCommand }, Json));
         await using var tx = await db.Database.BeginTransactionAsync(
             IsolationLevel.ReadCommitted,
             ct
@@ -112,6 +121,12 @@ public class OisService(ClinicDb db, TimeProvider clock)
                 Json
             );
             var targetId = w.Apply(op, command, actor, role, now);
+            Track(w.Drafts);
+            if (op is "prescribe" or "plan")
+            {
+                var caseId = op == "prescribe" ? command.Id : command.CaseId;
+                db.RemoveRange(w.Drafts.Where(x => x.CaseId == caseId && x.Actor == actor && x.Operation == op));
+            }
             Track(w.Cases);
             Track(w.Prescriptions);
             Track(w.Plans);
@@ -186,7 +201,7 @@ public static class OisEndpoints
         var group = app.MapGroup("/api/ois").RequireAuthorization("ois");
         group.MapGet(
             "/workspace",
-            (OisService service, CancellationToken ct) => service.Snapshot(ct)
+            (OisService service, HttpContext ctx, CancellationToken ct) => service.Snapshot(ctx.User.FindFirstValue(ClaimTypes.NameIdentifier)!, ct)
         );
         group.MapPost(
             "/commands/{operation}",

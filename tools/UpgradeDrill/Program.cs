@@ -18,8 +18,17 @@ if (mode == "prepare")
     await db.Database.EnsureDeletedAsync();
     await migrator.MigrateAsync(previous);
     await db.Database.ExecuteSqlRawAsync("INSERT INTO Users (Id,Role,PasswordHash) VALUES ('retired-admin','Admin','unused'),('retained-clinician','Clinician','preserve-hash')");
-    await new OisService(db, TimeProvider.System).Execute("case", new(PatientId: 1, Text: "Preserved OIS case"),
-        "retained-clinician", "Clinician", "upgrade-preserve", "upgrade-drill", default);
+    // Seed using the previous wire/schema contract, not today's EF entities and service.
+    const string caseId = "upgrade-case";
+    var json = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+    var legacyCommand = new { Id = "", Version = 0, PatientId = 1, CaseId = "", PlanId = "", ResourceId = "", Kind = "", StartUtc = (string?)null, EndUtc = (string?)null, Text = "Preserved OIS case", Diagnosis = "", Reason = "", Attachment = "", Outcome = "", FailureType = "", IdentityChecked = false, Available = true };
+    string Hash(string value) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(value)));
+    var key = Hash(System.Text.Json.JsonSerializer.Serialize(new[] { "ois", "retained-clinician", "Clinician", "upgrade-preserve" }));
+    var fingerprint = Hash(System.Text.Json.JsonSerializer.Serialize(new { op = "case", command = legacyCommand }, json));
+    var response = System.Text.Json.JsonSerializer.Serialize(new { targetId = caseId });
+    await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO CareCase (Id, Version, PatientId, Title) VALUES ({caseId}, 1, 1, 'Preserved OIS case')");
+    await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO OisAudit (Actor, Role, Action, TargetId, Detail, CorrelationId, AtUtc) VALUES ('retained-clinician', 'Clinician', 'case', {caseId}, '{{}}', 'upgrade-drill', UTC_TIMESTAMP())");
+    await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO Idempotency (Id, Fingerprint, Response, CreatedUtc) VALUES ({key}, {fingerprint}, {response}, UTC_TIMESTAMP())");
     Console.WriteLine("Prepared previous OIS schema with clinical data, audit, replay result and staff account.");
 }
 else if (mode == "upgrade")
@@ -36,7 +45,7 @@ else if (mode == "upgrade")
 }
 else if (mode != "verify-old") throw new Exception("prepare | upgrade | verify-old");
 if (await db.Set<CareCase>().CountAsync() != 1
-    || (await db.Set<CareCase>().SingleAsync()).Title != "Preserved OIS case"
+    || (await db.Set<CareCase>().Select(x => x.Title).SingleAsync()) != "Preserved OIS case"
     || await db.Set<OisAudit>().CountAsync() != 1 || await db.Idempotency.CountAsync() != 1
     || (await db.Users.SingleAsync(x=>x.Id=="retained-clinician")).PasswordHash != "preserve-hash"
     || await db.Patients.CountAsync() != 2)

@@ -4,6 +4,7 @@ namespace ClinicFlow.Ois;
 // Pure workflow rules; the service executes each command under a database writer lock.
 public class OisWorkflow
 {
+    public List<OisDraft> Drafts { get; set; } = [];
     public List<CareCase> Cases { get; set; } = [];
     public List<Prescription> Prescriptions { get; set; } = [];
     public List<TreatmentPlan> Plans { get; set; } = [];
@@ -19,6 +20,13 @@ public class OisWorkflow
             "book" => c.Kind is "Experiment" ? "Clinician"
             : c.Kind is "Maintenance" ? "Physicist"
             : "Scheduler",
+            "save-draft" => c.Kind switch
+            {
+                "prescribe" => "Clinician",
+                "plan" => "Physicist",
+                _ => throw new BusinessException("invalid_kind", "草稿类型无效", 400),
+            },
+            "terminate" or "note" => "Clinician",
             "case"
             or "prescribe"
             or "review"
@@ -60,6 +68,50 @@ public class OisWorkflow
 
         switch (op)
         {
+            case "save-draft":
+                var draftCare = Current(Cases, c.CaseId, c.Version);
+                Need(!draftCare.Terminated, "terminated", "诊疗档案已终止");
+                Need(c.DraftJson.Length <= 64000, "invalid_text", "草稿过长", 400);
+                try
+                {
+                    using var payload = System.Text.Json.JsonDocument.Parse(c.DraftJson);
+                    Need(payload.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object,
+                        "invalid_input", "草稿须为表单对象", 400);
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                    throw new BusinessException("invalid_input", "草稿格式无效", 400);
+                }
+                var draft = Drafts.SingleOrDefault(x =>
+                    x.CaseId == c.CaseId && x.Actor == actor && x.Operation == c.Kind);
+                if (draft is null)
+                {
+                    Need(c.DraftVersion == 0, "stale_version", "草稿已提交，请重新打开");
+                    draft = new OisDraft { CaseId = c.CaseId, Actor = actor, Operation = c.Kind };
+                    Drafts.Add(draft);
+                }
+                else
+                {
+                    Need(draft.Version == c.DraftVersion, "stale_version", "草稿已更新，请刷新");
+                    draft.Version++;
+                }
+                draft.Payload = c.DraftJson;
+                draft.CaseVersion = c.Version;
+                return draft.Id;
+            case "terminate":
+                var ended = Current(Cases, c.Id, c.Version);
+                NoActiveTreatment(ended.Id);
+                Need(!ended.Terminated, "terminated", "诊疗档案已终止");
+                ended.TerminationReason = Text(c.Reason);
+                ended.Terminated = true;
+                ended.Version++;
+                BlockedTasks(ended.Id, "诊疗方案已终止", now);
+                AddTask(ended.Id, "Physicist", "诊疗方案已终止：" + c.Reason, now);
+                return ended.Id;
+            case "note":
+                Current(Cases, c.Id, c.Version);
+                Text(c.Text);
+                return c.Id;
             case "case":
                 Need(Patients.Any(x => x.Id == c.PatientId), "patient_missing", "患者不存在", 404);
                 var care = new CareCase { PatientId = c.PatientId, Title = Text(c.Text) };
@@ -68,9 +120,16 @@ public class OisWorkflow
             case "prescribe":
                 care = Current(Cases, c.Id, c.Version);
                 NoActiveTreatment(care.Id);
+                Need(!care.Terminated, "terminated", "诊疗档案已终止");
+                ValidateClinical(c);
                 var rx = new Prescription
                 {
                     CaseId = care.Id,
+                    TreatmentSite = c.TreatmentSite,
+                    TotalDoseGy = c.TotalDoseGy,
+                    FractionDoseGy = c.FractionDoseGy,
+                    Fractions = c.Fractions,
+                    TreatmentMaterials = c.TreatmentMaterials,
                     Diagnosis = Text(c.Diagnosis),
                     Content = Text(c.Text),
                     Reason = care.CurrentPrescriptionId is null ? c.Reason : Text(c.Reason),
@@ -88,11 +147,15 @@ public class OisWorkflow
             case "plan":
                 care = Current(Cases, c.CaseId, c.Version);
                 NoActiveTreatment(care.Id);
+                Need(!care.Terminated, "terminated", "诊疗档案已终止");
                 Need(
                     care.CurrentPrescriptionId is not null,
                     "prescription_required",
                     "请先签署处方"
                 );
+                Need(!Plans.Any(x => x.PrescriptionId == care.CurrentPrescriptionId && x.Validation == "Failed" && x.FailureType == "Clinical"), "clinical_revision_required", "临床问题须先由诊疗人员修订处方或终止");
+                Need(HasClinical(Get(Prescriptions, care.CurrentPrescriptionId!)), "clinical_details_required", "历史处方缺少结构化信息，请先签署完整新处方");
+                ValidateVerification(c);
                 Machine(c.ResourceId);
                 Need(c.Attachment.Length <= 1000, "invalid_text", "附件引用过长", 400);
                 var plan = new TreatmentPlan
@@ -100,6 +163,14 @@ public class OisWorkflow
                     CaseId = care.Id,
                     PrescriptionId = care.CurrentPrescriptionId!,
                     Revision = Plans.Count(x => x.CaseId == care.Id) + 1,
+                    VerificationMethod = c.VerificationMethod,
+                    Equipment = c.Equipment,
+                    MeasurementConditions = c.MeasurementConditions,
+                    ExpectedValues = c.ExpectedValues,
+                    StandardName = c.StandardName,
+                    StandardVersion = c.StandardVersion,
+                    AcceptanceCriteria = c.AcceptanceCriteria,
+                    AllowedDeviation = c.AllowedDeviation,
                     Summary = Text(c.Text),
                     Attachment = c.Attachment,
                     MachineId = c.ResourceId,
@@ -163,7 +234,8 @@ public class OisWorkflow
                 {
                     plan = Get(Plans, c.PlanId);
                     CurrentPlan(plan);
-                    Need(plan.Validation == "Pending", "signed", "本版本已经验证，请登记新版本");
+                    Need(CanExperiment(plan), "signed", "临床问题须修改处方；已通过计划不可重复验证");
+                    Need(plan.ReviewedBy is not null, "review_required", "请先审核计划再安排实验");
                     Need(
                         plan.MachineId == c.ResourceId,
                         "machine_mismatch",
@@ -210,7 +282,7 @@ public class OisWorkflow
                     plan = Get(Plans, booking.PlanId!);
                     CurrentPlan(plan);
                     Need(
-                        plan.Validation == "Pending" && plan.MachineId == moved.ResourceId,
+                        CanExperiment(plan) && plan.MachineId == moved.ResourceId,
                         "invalid_plan",
                         "实验须使用当前待验证计划及其指定机器"
                     );
@@ -257,7 +329,10 @@ public class OisWorkflow
                 Need(now >= booking.StartUtc, "not_started", "实验预约尚未开始");
                 plan = Get(Plans, booking.PlanId!);
                 CurrentPlan(plan);
-                Need(plan.Validation == "Pending", "signed", "验证结果已签署，请修订为新版本");
+                Need(CanExperiment(plan), "signed", "本版本不可验证");
+                Need(plan.ReviewedBy is not null, "review_required", "计划尚未审核");
+                Text(c.MeasuredValues);
+                Text(c.ResultAttachment);
                 Need(
                     c.Outcome is "Passed" or "Failed",
                     "invalid_result",
@@ -279,6 +354,13 @@ public class OisWorkflow
                 plan.ValidationNote = c.Text;
                 plan.FailureType = c.Outcome == "Failed" ? c.FailureType : "";
                 plan.Version++;
+                booking.ValidationOutcome = c.Outcome;
+                booking.ValidationNote = c.Text;
+                booking.FailureType = plan.FailureType;
+                booking.MeasuredValues = c.MeasuredValues;
+                booking.ResultAttachment = c.ResultAttachment;
+                booking.SignedBy = actor;
+                booking.SignedUtc = now;
                 booking.Status = "Completed";
                 booking.Version++;
                 if (c.Outcome == "Failed")
@@ -289,6 +371,8 @@ public class OisWorkflow
                         c.Text,
                         now
                     );
+                    if (c.FailureType != "Clinical")
+                        AddTask(plan.Id, "Clinician", "物理验证失败，物理师处理中：" + c.Text, now);
                     BlockedTasks(plan.CaseId, "物理验证失败：" + c.Text, now);
                     if (c.FailureType == "Equipment")
                         StopMachine(booking.ResourceId, c.Text, now);
@@ -422,6 +506,15 @@ public class OisWorkflow
                 task.ReadBy = actor;
                 if (op == "resolve-task")
                 {
+                    var failed = Plans.SingleOrDefault(x => x.Id == task.TargetId && x.Validation == "Failed");
+                    if (failed is not null)
+                    {
+                        var owner = Get(Cases, failed.CaseId);
+                        var current = Plans.SingleOrDefault(x => x.Id == owner.CurrentPlanId);
+                        Need(owner.Terminated || (failed.FailureType == "Clinical"
+                            ? owner.CurrentPrescriptionId != failed.PrescriptionId
+                            : current?.Validation == "Passed"), "unresolved_failure", "须先完成修订、重测通过或终止，已读不等于已解决");
+                    }
                     task.Resolution = Text(c.Text);
                     task.ResolvedBy = actor;
                     task.ResolvedUtc = now;
@@ -472,12 +565,15 @@ public class OisWorkflow
         if (r.Kind != "Treatment")
             return reasons;
         var care = Get(Cases, r.CaseId!);
+        if (care.Terminated) reasons.Add("诊疗方案已终止");
         var plan = Plans.SingleOrDefault(x => x.Id == care.CurrentPlanId);
         if (plan is null)
         {
             reasons.Add("尚无当前治疗计划");
             return reasons;
         }
+        if (!HasClinical(Get(Prescriptions, plan.PrescriptionId)) || !HasVerification(plan))
+            reasons.Add("方案缺少结构化信息，需修订后重新验证");
         if (plan.PrescriptionId != care.CurrentPrescriptionId)
             reasons.Add("计划与当前处方不一致");
         if (plan.MachineId != r.ResourceId)
@@ -525,9 +621,43 @@ public class OisWorkflow
         );
     }
 
+    static bool HasClinical(Prescription p) =>
+        !string.IsNullOrWhiteSpace(p.TreatmentSite)
+        && !string.IsNullOrWhiteSpace(p.TreatmentMaterials)
+        && p.TotalDoseGy > 0 && p.FractionDoseGy > 0 && p.Fractions > 0;
+    static bool HasVerification(TreatmentPlan p) => new[]
+    {
+        p.VerificationMethod, p.Equipment, p.MeasurementConditions, p.ExpectedValues,
+        p.StandardName, p.StandardVersion, p.AcceptanceCriteria, p.AllowedDeviation,
+    }.All(x => !string.IsNullOrWhiteSpace(x));
+
+    static bool CanExperiment(TreatmentPlan p) =>
+        p.Validation == "Pending" || (p.Validation == "Failed" && p.FailureType != "Clinical");
+
+    static void ValidateClinical(OisCommand c)
+    {
+        Text(c.TreatmentSite);
+        Text(c.TreatmentMaterials);
+        Need(c.TotalDoseGy > 0 && c.FractionDoseGy > 0 && c.Fractions > 0, "invalid_dose", "剂量和分次数必须大于零", 400);
+    }
+
+    static void ValidateVerification(OisCommand c)
+    {
+        Text(c.VerificationMethod);
+        Text(c.Equipment);
+        Text(c.MeasurementConditions);
+        Text(c.ExpectedValues);
+        Text(c.StandardName);
+        Text(c.StandardVersion);
+        Text(c.AcceptanceCriteria);
+        Text(c.AllowedDeviation);
+    }
+
     void CurrentPlan(TreatmentPlan plan)
     {
         var care = Get(Cases, plan.CaseId);
+        Need(!care.Terminated, "terminated", "诊疗档案已终止");
+        Need(HasVerification(plan) && HasClinical(Get(Prescriptions, plan.PrescriptionId)), "details_required", "历史方案须补齐结构化信息并重新验证");
         Need(
             care.CurrentPlanId == plan.Id && care.CurrentPrescriptionId == plan.PrescriptionId,
             "superseded_plan",

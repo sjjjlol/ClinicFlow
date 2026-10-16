@@ -77,6 +77,13 @@ namespace ClinicFlow.Migrations
                     b.Property<int>("PatientId")
                         .HasColumnType("int");
 
+                    b.Property<bool>("Terminated")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("TerminationReason")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasColumnType("longtext");
@@ -132,6 +139,43 @@ namespace ClinicFlow.Migrations
                     b.HasIndex("TargetId", "Id");
 
                     b.ToTable("OisAudit");
+                });
+
+            modelBuilder.Entity("ClinicFlow.Ois.OisDraft", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)");
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("CaseId")
+                        .IsRequired()
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<int>("CaseVersion")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Operation")
+                        .IsRequired()
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CaseId", "Actor", "Operation")
+                        .IsUnique();
+
+                    b.ToTable("OisDraft");
                 });
 
             modelBuilder.Entity("ClinicFlow.Ois.OisGate", b =>
@@ -273,6 +317,12 @@ namespace ClinicFlow.Migrations
                         .IsRequired()
                         .HasColumnType("longtext");
 
+                    b.Property<decimal>("FractionDoseGy")
+                        .HasColumnType("decimal(65,30)");
+
+                    b.Property<int>("Fractions")
+                        .HasColumnType("int");
+
                     b.Property<string>("Reason")
                         .IsRequired()
                         .HasColumnType("longtext");
@@ -285,6 +335,17 @@ namespace ClinicFlow.Migrations
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("SupersedesId")
+                        .HasColumnType("longtext");
+
+                    b.Property<decimal>("TotalDoseGy")
+                        .HasColumnType("decimal(65,30)");
+
+                    b.Property<string>("TreatmentMaterials")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("TreatmentSite")
+                        .IsRequired()
                         .HasColumnType("longtext");
 
                     b.Property<int>("Version")
@@ -310,7 +371,15 @@ namespace ClinicFlow.Migrations
                     b.Property<DateTime>("EndUtc")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<string>("FailureType")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
                     b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("MeasuredValues")
                         .IsRequired()
                         .HasColumnType("longtext");
 
@@ -328,10 +397,29 @@ namespace ClinicFlow.Migrations
                         .IsRequired()
                         .HasColumnType("varchar(36)");
 
+                    b.Property<string>("ResultAttachment")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("SignedBy")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime?>("SignedUtc")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<DateTime>("StartUtc")
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ValidationNote")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ValidationOutcome")
                         .IsRequired()
                         .HasColumnType("longtext");
 
@@ -411,6 +499,14 @@ namespace ClinicFlow.Migrations
                         .HasMaxLength(36)
                         .HasColumnType("varchar(36)");
 
+                    b.Property<string>("AcceptanceCriteria")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("AllowedDeviation")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
                     b.Property<string>("Attachment")
                         .IsRequired()
                         .HasColumnType("longtext");
@@ -419,6 +515,14 @@ namespace ClinicFlow.Migrations
                         .IsRequired()
                         .HasColumnType("varchar(36)");
 
+                    b.Property<string>("Equipment")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ExpectedValues")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
                     b.Property<string>("FailureType")
                         .IsRequired()
                         .HasColumnType("longtext");
@@ -426,6 +530,10 @@ namespace ClinicFlow.Migrations
                     b.Property<string>("MachineId")
                         .IsRequired()
                         .HasColumnType("varchar(36)");
+
+                    b.Property<string>("MeasurementConditions")
+                        .IsRequired()
+                        .HasColumnType("longtext");
 
                     b.Property<string>("PrescriptionId")
                         .IsRequired()
@@ -447,6 +555,14 @@ namespace ClinicFlow.Migrations
                     b.Property<int>("Revision")
                         .HasColumnType("int");
 
+                    b.Property<string>("StandardName")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("StandardVersion")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
                     b.Property<string>("Summary")
                         .IsRequired()
                         .HasColumnType("longtext");
@@ -462,6 +578,10 @@ namespace ClinicFlow.Migrations
                         .HasColumnType("longtext");
 
                     b.Property<string>("ValidationNote")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("VerificationMethod")
                         .IsRequired()
                         .HasColumnType("longtext");
 

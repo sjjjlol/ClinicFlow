@@ -8,8 +8,8 @@ assert.equal((await scheduler.request(path+'case',{patientId:1,text:'forbidden'}
 assert.equal((await clinician.request(path+'case',{patientId:1,text:'missing-key'})).status,400);
 async function send(client,op,command,key=crypto.randomUUID()){const r=await client.request(path+op,command,key);assert.equal(r.status,200,JSON.stringify(r.body));return r.body.targetId;}
 const caseId=await send(clinician,'case',{patientId:1,text:'HTTP OIS '+Date.now()});
-await send(clinician,'prescribe',{id:caseId,version:1,diagnosis:'模拟诊断',text:'模拟处方'});
-const planId=await send(physicist,'plan',{caseId,version:2,resourceId:'linac-a',text:'模拟计划'});
+await send(clinician,'prescribe',{id:caseId,version:1,diagnosis:'模拟诊断',text:'模拟处方',treatmentSite:'模拟部位',totalDoseGy:60,fractionDoseGy:2,fractions:30,treatmentMaterials:'无'});
+const planId=await send(physicist,'plan',{caseId,version:2,resourceId:'linac-a',text:'模拟计划',verificationMethod:'水模体测量',equipment:'模拟器材',measurementConditions:'模拟条件',expectedValues:'测点 A 2 Gy',standardName:'演示规范',standardVersion:'1',acceptanceCriteria:'剂量偏差',allowedDeviation:'演示阈值'});
 await send(clinician,'review',{id:planId,version:1});
 assert.equal((await clinician.request(path+'validate',{id:'forged',version:1,outcome:'Passed',text:'禁止代签'},crypto.randomUUID())).status,403);
 const occupied=(await scheduler.request('/api/ois/workspace')).body.reservations.map(x=>x.reservation);

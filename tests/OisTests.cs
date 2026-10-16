@@ -5,6 +5,19 @@ using Xunit;
 
 namespace ClinicFlow.Tests;
 
+// Complete demo inputs for workflow scenarios; missing-field tests call Apply directly.
+static class VerificationInputs
+{
+    public static OisCommand Complete(string op, OisCommand c) => op switch
+    {
+        "prescribe" => c with { TreatmentSite = "模拟部位", TotalDoseGy = 60, FractionDoseGy = 2, Fractions = 30, TreatmentMaterials = "无" },
+        "plan" => c with { VerificationMethod = "水模体测量", Equipment = "模拟水箱与探测器", MeasurementConditions = "模拟测量条件", ExpectedValues = "测点 A 2 Gy", StandardName = "演示规范（非临床）", StandardVersion = "1", AcceptanceCriteria = "测点剂量偏差", AllowedDeviation = "演示阈值" },
+        "validate" => c with { MeasuredValues = "测点 A 2 Gy", ResultAttachment = "DEMO-REPORT" },
+        _ => c,
+    };
+}
+
+
 public class OisRulesTests
 {
     readonly DateTime now = new(2030, 1, 1, 8, 0, 0, DateTimeKind.Utc);
@@ -22,7 +35,7 @@ public class OisRulesTests
         };
 
     string Run(OisWorkflow w, string op, OisCommand c, string role, DateTime? at = null) =>
-        w.Apply(op, c, role.ToLowerInvariant(), role, at ?? now);
+        w.Apply(op, VerificationInputs.Complete(op, c), role.ToLowerInvariant(), role, at ?? now);
 
     (CareCase, TreatmentPlan) Plan(OisWorkflow w)
     {
@@ -53,6 +66,10 @@ public class OisRulesTests
         int hour = 10
     )
     {
+        if (kind == "Experiment") {
+            var p = w.Plans.Single(x => x.Id == plan);
+            if (p.ReviewedBy is null) Run(w, "review", new(Id:p.Id, Version:p.Version), "Clinician");
+        }
         var id = Run(
             w,
             "book",
@@ -81,6 +98,74 @@ public class OisRulesTests
             "Physicist",
             now.Date.AddHours(9)
         );
+    }
+
+    [Fact]
+    public void Missing_clinical_details_and_unreviewed_experiments_are_rejected()
+    {
+        var w = Create();
+        var id = Run(w, "case", new(PatientId:1, Text:"缺少信息"), "Clinician");
+        Assert.Throws<BusinessException>(() => w.Apply("prescribe", new(Id:id, Version:1, Diagnosis:"诊断", Text:"处方"), "doctor", "Clinician", now));
+        Assert.Empty(w.Prescriptions);
+        var (_, p) = Plan(w);
+        Assert.Throws<BusinessException>(() => w.Apply("book", new(Kind:"Experiment", PlanId:p.Id, ResourceId:"a", StartUtc:now.AddHours(1), EndUtc:now.AddHours(2)), "doctor", "Clinician", now));
+    }
+
+    [Fact]
+    public void Physical_failure_notifies_both_roles_and_retest_preserves_signed_attempt()
+    {
+        var w = Create();
+        var (care, p) = Plan(w);
+        var exp = Book(w, "Experiment", "a", plan:p.Id, hour:9);
+        Run(w, "validate", new(Id:exp.Id, Version:1, Outcome:"Failed", FailureType:"Plan", Text:"摆位需调整"), "Physicist", now.AddHours(1));
+        Assert.Contains(w.Tasks, t => t.TargetId == p.Id && t.Role == "Clinician" && t.Reason.Contains("失败"));
+        var task = w.Tasks.Last(t => t.TargetId == p.Id && t.Role == "Physicist");
+        Run(w, "read-task", new(Id:task.Id, Version:task.Version), "Physicist");
+        Assert.Null(task.ResolvedBy);
+        Assert.Throws<BusinessException>(() => Run(w, "resolve-task", new(Id:task.Id, Version:task.Version, Text:"已查看"), "Physicist"));
+        var treatment = Book(w, "Treatment", "a", care.Id, hour:12);
+        Assert.NotEmpty(w.Blockers(treatment));
+        var retry = Book(w, "Experiment", "a", plan:p.Id, hour:10);
+        Run(w, "validate", new(Id:retry.Id, Version:1, Outcome:"Passed", Text:"调整后通过"), "Physicist", now.AddHours(2));
+        Assert.Equal("Failed", exp.ValidationOutcome);
+        Assert.Equal("Passed", retry.ValidationOutcome);
+        Assert.Equal("摆位需调整", exp.ValidationNote);
+        Assert.Empty(w.Blockers(treatment));
+        Run(w, "resolve-task", new(Id:task.Id, Version:task.Version, Text:"重测通过"), "Physicist");
+        Assert.NotNull(task.ResolvedBy);
+    }
+
+    [Fact]
+    public void Clinical_failure_requires_prescription_revision_or_termination()
+    {
+        var w = Create();
+        var (care, p) = Plan(w);
+        var exp = Book(w, "Experiment", "a", plan:p.Id, hour:9);
+        Run(w, "validate", new(Id:exp.Id, Version:1, Outcome:"Failed", FailureType:"Clinical", Text:"临床要求需修订"), "Physicist", now.AddHours(1));
+        Assert.Throws<BusinessException>(() => Book(w, "Experiment", "a", plan:p.Id, hour:10));
+        Assert.Throws<BusinessException>(() => Run(w, "plan", new(CaseId:care.Id, Version:care.Version, ResourceId:"a", Text:"绕过修订", Reason:"重做"), "Physicist"));
+        var treatment = Book(w, "Treatment", "a", care.Id, hour:12);
+        Run(w, "terminate", new(Id:care.Id, Version:care.Version, Reason:"终止此方案"), "Clinician");
+        Assert.Contains("诊疗方案已终止", w.Blockers(treatment));
+        Assert.Throws<BusinessException>(() => Run(w, "prescribe", new(Id:care.Id, Version:care.Version, Diagnosis:"诊断", Text:"处方", Reason:"重做"), "Clinician"));
+    }
+
+    [Fact]
+    public void Drafts_accept_incomplete_data_without_changing_release_and_are_versioned()
+    {
+        var w = Create();
+        var (care, p) = Plan(w);
+        Release(w, p);
+        var version = care.Version;
+        Run(w, "save-draft", new(CaseId:care.Id, Version:version, Kind:"prescribe", DraftJson:"{\"treatmentSite\":\"草稿\"}"), "Clinician");
+        var draft = Assert.Single(w.Drafts);
+        Assert.Equal(version, care.Version);
+        Assert.Equal("Passed", p.Validation);
+        Assert.Throws<BusinessException>(() => Run(w, "save-draft", new(CaseId:care.Id, Version:version, Kind:"prescribe", DraftJson:"{}"), "Clinician"));
+        Run(w, "save-draft", new(CaseId:care.Id, Version:version, Kind:"prescribe", DraftJson:"{}", DraftVersion:draft.Version), "Clinician");
+        Assert.Equal(2, draft.Version);
+        Run(w, "note", new(Id:care.Id, Version:care.Version, Text:"仅补充备注"), "Clinician");
+        Assert.Equal("Passed", p.Validation);
     }
 
     [Theory]
@@ -449,7 +534,7 @@ public class OisDatabaseTests : IAsyncLifetime
             await using var db = fixture.Db();
             var result = await new OisService(db, clock).Execute(
                 op,
-                input,
+                VerificationInputs.Complete(op, input),
                 role.ToLowerInvariant(),
                 role,
                 Guid.NewGuid().ToString(),
@@ -472,6 +557,7 @@ public class OisDatabaseTests : IAsyncLifetime
             new(CaseId: care, Version: 2, ResourceId: "linac-a", Text: "v1"),
             "Physicist"
         );
+        await Act("review", new(Id: p1, Version: 1), "Clinician");
         var exp1 = await Act(
             "book",
             new(
