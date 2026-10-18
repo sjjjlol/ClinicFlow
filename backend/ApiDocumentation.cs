@@ -8,7 +8,7 @@ namespace ClinicFlow
     // ===== OpenAPI 定制（≈ springdoc-openapi 的 OpenApiCustomizer）=====
     public static class ApiDocumentation
     {
-        // 扩展 IServiceCollection 的注册方法，Startup.ConfigureServices 里 services.AddClinicOpenApi() 调用。
+        // 扩展 IServiceCollection 的注册方法，Hosting/ServiceCollectionExtensions.AddClinicServices 里 services.AddClinicOpenApi() 调用。
         public static void AddClinicOpenApi(this IServiceCollection services) =>
             services.AddOpenApi(options =>
                 // AddOperationTransformer：遍历所有端点统一补充文档（lambda 三参数：操作、上下文、取消令牌）。

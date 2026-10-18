@@ -1,32 +1,26 @@
-using System.Threading.Tasks;
 using ClinicFlow;
-using Microsoft.AspNetCore.Hosting;
+using ClinicFlow.Hosting;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 
-// 显式 Main 和 Startup：入口负责启动，服务注册和请求管道由 Startup 管理。
+var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddClinicServices(builder.Configuration, builder.Environment);
+
+await using (WebApplication app = builder.Build())
+{
+    using (IServiceScope scope = app.Services.CreateScope())
+    {
+        ClinicDb db = scope.ServiceProvider.GetRequiredService<ClinicDb>();
+        await db.Database.MigrateAsync();
+        await Identity.Seed(db, app.Configuration);
+    }
+
+    app.UseClinicPipeline();
+    await app.RunAsync();
+}
+
+// 为集成测试暴露入口类型，启动代码由顶层语句生成。
 public partial class Program
 {
-    public static async Task Main(string[] args)
-    {
-        using (IHost host = CreateHostBuilder(args).Build())
-        {
-            using (IServiceScope scope = host.Services.CreateScope())
-            {
-                ClinicDb db = scope.ServiceProvider.GetRequiredService<ClinicDb>();
-                await db.Database.MigrateAsync();
-                await Identity.Seed(db, scope.ServiceProvider.GetRequiredService<IConfiguration>());
-            }
-
-            await host.RunAsync();
-        }
-    }
-
-    public static IHostBuilder CreateHostBuilder(string[] args)
-    {
-        return Host.CreateDefaultBuilder(args)
-            .ConfigureWebHostDefaults(webBuilder => webBuilder.UseStartup<Startup>());
-    }
 }

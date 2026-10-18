@@ -2,12 +2,13 @@
 
 浏览器 → 同源 ASP.NET Core Controller → OisService → OisWorkflow → MySQL。
 
-后端保留 .NET 10 / ASP.NET Core，使用显式 `Program.Main`、`Startup` 和 MVC Controller。语法采用 .NET 5 时期的 C# 9 上限，通过 `Directory.Build.props` 的 `LangVersion=9.0` 强制检查；运行时和目标框架仍为 `net10.0`。关闭隐式 global using，源码显式声明 using。
+后端保留 .NET 10 / ASP.NET Core，入口使用 `WebApplication.CreateBuilder` 和顶层语句，HTTP API 使用 MVC Controller。语法采用 .NET 5 时期的 C# 9 上限，通过 `Directory.Build.props` 的 `LangVersion=9.0` 强制检查；运行时和目标框架仍为 `net10.0`。关闭隐式 global using，源码显式声明 using。
 
 - `frontend/src/OisApp.tsx`：三个角色工作台、表单预览确认、待办、历史和执行。
 - `frontend/src/OisCalendar.tsx`：日/周日历、患者预约及机器占用。
 - `backend/Program.cs`：创建宿主，在独立作用域内迁移数据库、初始化演示账号，然后启动服务。
-- `backend/Startup.cs`：`ConfigureServices` 注册 DI、Cookie 认证、授权策略、登录限流、MVC JSON 和 OpenAPI；`Configure` 装配请求管道和端点。
+- `backend/Hosting/ServiceCollectionExtensions.cs`：`AddClinicServices` 注册 DI、Cookie 认证、授权策略、登录限流、MVC JSON 和 OpenAPI。
+- `backend/Hosting/WebApplicationExtensions.cs`：`UseClinicPipeline` 装配请求管道、MapControllers、OpenAPI 和静态文件回退端点。
 - `backend/Controllers/AuthController.cs`：登录、退出、当前用户和 CSRF 令牌；登录输入为 `Contracts/LoginRequest.cs`。
 - `backend/Controllers/OisController.cs`：工作区快照和业务命令，通过构造函数注入 OisService，显式绑定路由及请求体，每个业务操作有独立 Action（如 Book、Cancel、Prescribe），通过私有 ExecuteCommand 共用调用逻辑，返回 IActionResult。
 - `backend/Controllers/HealthController.cs`：数据库健康查询。
@@ -40,11 +41,13 @@ MVC 的 `AddJsonOptions` 注册 UtcDateTimeConverter，保持 camelCase 与 UTC 
 
 ## 后端代码风格
 
-- 全部手写 C#（后端、测试和升级工具）采用块命名空间、普通类、显式构造函数和完整的对象创建类型；DTO 使用属性初始化器。
-- 不使用 record / with、主构造函数、顶层语句、目标类型 new()、文件作用域命名空间或集合表达式。条件分支优先使用普通 if / switch 和显式比较。
+- 入口 Program.cs 使用 C# 9 顶层语句；其余手写 C#（后端、测试和升级工具）采用块命名空间、普通类、显式构造函数和完整的对象创建类型；DTO 使用属性初始化器。
+- 不使用 record / with、主构造函数、目标类型 new()、文件作用域命名空间或集合表达式。条件分支优先使用普通 if / switch 和显式比较。
 - 保留 async/await、LINQ、泛型、Nullable、简单表达式体成员和 await using，保持异步、类型检查及资源释放行为。
 - 保留 .NET 10 提供的 TimeProvider、限流及 OpenAPI API；语言风格约束不代表运行时依赖回退到 .NET 5。
 - OisCommand 的属性顺序和默认值与原 record 保持一致，尤其 Available 默认为 true，避免改变持久化幂等指纹。升级演练验证历史请求可重放且不会重复写入。
 - 历史 EF 迁移和快照不重写；它们随整个工程在 C# 9 下编译验证。
 
 `Directory.Build.targets` 只移除 Microsoft.AspNetCore.OpenApi 的 XML 注释生成器，因为它自动生成 C# 11+ 文件类型。现有文档由运行时 ApiExplorer / ApiDocumentation 生成；仍保留其他编译分析器。Docker 构建也复制此配置文件。
+
+现代宿主入口只负责 CreateBuilder → 服务注册 → Build → 数据库初始化 → 管道配置 → RunAsync。服务注册仍由 IServiceCollection 管理；Controller、OisService 和 ClinicDb 继续通过构造函数注入。使用精简宿主不等于使用 Minimal API，本项目业务接口仍由 Controller 定义。

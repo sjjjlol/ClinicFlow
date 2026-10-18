@@ -13,11 +13,11 @@
 | 1. 明确需求 | 谁操作什么，哪些规则必须成立 | [产品范围](ois-mvp.md)、[领域语言](../CONTEXT.md) |
 | 2. 建立工程 | SDK、项目、依赖和启动方式是什么 | `global.json`、`ClinicFlow.sln`、`backend/ClinicFlow.csproj` |
 | 3. 读懂 C# | 如何表达数据、依赖和异步 I/O | `backend/ClinicDb.cs`、`backend/Ois/Models.cs` |
-| 4. 配置与装配 | 配置从哪里来，对象由谁创建 | `backend/Program.cs`、`backend/Startup.cs`、`scripts/api.sh` |
+| 4. 配置与装配 | 配置从哪里来，对象由谁创建 | `backend/Program.cs`、`backend/Hosting/`、`scripts/api.sh` |
 | 5. 建模与持久化 | 表、关系、查询和升级如何实现 | `backend/ClinicDb.cs`、`backend/Migrations/` |
 | 6. 实现业务 | 规则、事务、并发、幂等放在哪里 | `backend/Ois/Workflow.cs`、`backend/Ois/Service.cs` |
 | 7. 暴露 HTTP API | 请求如何绑定，响应如何生成 | `OisController.Book` / `Prescribe` 等 Action、`backend/ApiDocumentation.cs` |
-| 8. 横切能力 | 错误、身份、权限、日志怎么统一 | `backend/Startup.cs`、`backend/Middleware/`、`backend/Identity.cs` |
+| 8. 横切能力 | 错误、身份、权限、日志怎么统一 | `backend/Hosting/`、`backend/Middleware/`、`backend/Identity.cs` |
 | 9. 测试与交付 | 怎么证明正确，怎么运行产物 | `tests/`、`Dockerfile`、`.github/workflows/ci.yml` |
 
 ## 1. 先明确需求、接口和模块边界
@@ -188,21 +188,22 @@ var patients = await db.Patients
 
 ## 4. 配置、启动与依赖注入：先把对象装配好
 
-### 4.1 Program 与 Startup 分工
+### 4.1 精简宿主与显式装配
 
-本项目使用显式入口，完整实现见 `backend/Program.cs`：
+本项目入口使用 `WebApplication.CreateBuilder` 和 C# 9 顶层语句，无需手写 Main 或 Startup。核心装配流程如下，完整代码见 `backend/Program.cs`：
 
 ```csharp
-public static IHostBuilder CreateHostBuilder(string[] args)
-{
-    return Host.CreateDefaultBuilder(args)
-        .ConfigureWebHostDefaults(webBuilder => webBuilder.UseStartup<Startup>());
-}
+var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddClinicServices(builder.Configuration, builder.Environment);
+var app = builder.Build();
+// 在独立作用域中应用迁移、初始化演示账号。
+app.UseClinicPipeline();
+await app.RunAsync();
 ```
 
-`Main` 调用 Build 创建宿主，在作用域内执行数据库迁移和账号初始化，再调用 RunAsync。`Startup.ConfigureServices(IServiceCollection services)` 注册依赖；`Startup.Configure(IApplicationBuilder app)` 装配中间件，并在 UseEndpoints 中调用 MapControllers。Controller 按特性声明接口路径。
+`Hosting/ServiceCollectionExtensions.cs` 的 AddClinicServices 在 Build 前注册依赖；`Hosting/WebApplicationExtensions.cs` 的 UseClinicPipeline 装配中间件，调用 MapControllers 映射 Controller。Controller 继续用特性声明接口，精简宿主与 Minimal API 是两个独立选择。
 
-`Add…` 通常表示注册能力，`Use…` 通常表示加入请求管道，`Map…` 通常表示映射端点。注册认证服务之后，还需要认证中间件和授权规则。此结构运行在 ASP.NET Core / .NET 10 上。
+`Add…` 通常表示注册能力，`Use…` 通常表示加入请求管道，`Map…` 通常表示映射端点。注册认证服务之后，还需要认证中间件和授权规则。运行时仍为 .NET 10，语言上限仍为 C# 9。
 
 ### 4.2 配置来源与密钥
 
@@ -256,11 +257,11 @@ public class BookingWindow
 }
 ```
 
-本项目风格是在 Startup.ConfigureServices 中注册：
+本项目风格是在 AddClinicServices 中注册：
 
 ```csharp
 services.AddOptions<SchedulingOptions>()
-    .Bind(Configuration.GetSection(SchedulingOptions.SectionName))
+    .Bind(configuration.GetSection(SchedulingOptions.SectionName))
     .Validate(o => o.MaxAdvanceDays >= 1 && o.MaxAdvanceDays <= 365,
         "Scheduling:MaxAdvanceDays must be between 1 and 365")
     .ValidateOnStart();
@@ -282,7 +283,7 @@ services.AddScoped<BookingWindow>();
 
 Spring Bean 默认通常是 singleton；不要把这个习惯直接套到有 DbContext 的服务上。本项目的 `AddDbContext<ClinicDb>` 默认注册 Scoped，`OisService` 也是 Scoped，`TimeProvider.System` 作为 Singleton 注册。
 
-Singleton 不能直接持有 Scoped 服务，否则会让请求状态跨请求存活。启动任务或后台服务需要访问数据库时，显式创建作用域；本项目启动迁移使用 `host.Services.CreateScope()`。一般业务类优先构造器注入，而不是到处调用 `GetRequiredService`。生命周期与作用域规则见 [官方 DI 文档](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/dependency-injection?view=aspnetcore-10.0)。
+Singleton 不能直接持有 Scoped 服务，否则会让请求状态跨请求存活。启动任务或后台服务需要访问数据库时，显式创建作用域；本项目启动迁移使用 `app.Services.CreateScope()`。一般业务类优先构造器注入，而不是到处调用 `GetRequiredService`。生命周期与作用域规则见 [官方 DI 文档](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/dependency-injection?view=aspnetcore-10.0)。
 
 ### 4.5 从注册到注入：一个可跟踪的服务示例
 
@@ -300,7 +301,7 @@ public class GreetingService : IGreetingService
 }
 ```
 
-在 Startup.ConfigureServices 中调用 `services.AddScoped<IGreetingService, GreetingService>()`，Controller 构造函数即可接收 `IGreetingService service`，在 Action 中调用 `service.Greet(input.Name)`。这是“注册抽象到实现 → 容器创建对象 → 构造函数请求依赖”的完整过程；直接注入未注册的接口会失败。
+在 AddClinicServices 中调用 `services.AddScoped<IGreetingService, GreetingService>()`，Controller 构造函数即可接收 `IGreetingService service`，在 Action 中调用 `service.Greet(input.Name)`。这是“注册抽象到实现 → 容器创建对象 → 构造函数请求依赖”的完整过程；直接注入未注册的接口会失败。
 
 业务类同样可以通过构造器接收依赖。容器解析 OisService 时，会继续解析它的 ClinicDb 和 TimeProvider 参数。排查“Unable to resolve service”时，沿构造参数逐个检查注册，不要只看最外层服务。
 
@@ -380,40 +381,16 @@ EF Core 对支持事务的 Provider，单次 `SaveChanges` 默认在事务内完
 
 ```csharp
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 
-public class Program
-{
-    public static void Main(string[] args)
-    {
-        CreateHostBuilder(args).Build().Run();
-    }
-
-    public static IHostBuilder CreateHostBuilder(string[] args)
-    {
-        return Host.CreateDefaultBuilder(args)
-            .ConfigureWebHostDefaults(web => web.UseStartup<Startup>());
-    }
-}
-
-public class Startup
-{
-    public void ConfigureServices(IServiceCollection services)
-    {
-        services.AddControllers();
-    }
-
-    public void Configure(IApplicationBuilder app)
-    {
-        app.UseRouting();
-        app.UseEndpoints(endpoints => endpoints.MapControllers());
-    }
-}
+var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddControllers();
+var app = builder.Build();
+app.MapControllers();
+app.Run();
 ```
 
-该学习工程同样采用 Program + Startup。另建 `Controllers/GreetingsController.cs`：
+该学习工程同样采用顶层语句和精简宿主。另建 `Controllers/GreetingsController.cs`：
 
 ```csharp
 using System;
@@ -450,7 +427,7 @@ public class GreetingRequest
 
 JSON 无法解析、字段类型错误、缺失请求体属于绑定问题；字段内容和长度由输入校验处理；资源冲突、角色约束属于业务规则。
 
-`[ApiController]` 会在 ModelState 无效时自动返回错误。Startup.ConfigureServices 将错误统一成 400 和 `{ code: "invalid_request", message, correlationId }`，并关闭非空引用类型隐式 Required 校验，使缺省值和显式 null 继续交由原 Service / Workflow 规则处理。
+`[ApiController]` 会在 ModelState 无效时自动返回错误。AddClinicServices 将错误统一成 400 和 `{ code: "invalid_request", message, correlationId }`，并关闭非空引用类型隐式 Required 校验，使缺省值和显式 null 继续交由原 Service / Workflow 规则处理。
 
 MVC 使用 AddJsonOptions 注册 UTC DateTime 转换器；中间件 WriteAsJsonAsync 使用独立的 HTTP JSON 配置，两处都需要保持契约一致。OpenAPI 由 AddClinicOpenApi 和 ApiDocumentation.cs 生成，`/api/openapi/v1.json` 要求 OIS 授权。
 
@@ -483,7 +460,7 @@ app.Use(async (context, next) =>
 
 理解为包裹式调用：A 进入 → B 进入 → 端点 → B 返回 → A 返回。不调用 next 会短路。异常处理要放在希望捕获的下游之前；认证应先于授权；限流、CORS 等中间件还要考虑路由和策略所需信息。[官方中间件说明](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/middleware/?view=aspnetcore-10.0)
 
-本项目在 Startup.Configure 中显式调用 UseRouting，再执行认证、授权、限流和 CSRF，最后在 UseEndpoints 中映射 Controller。阅读时要同时看中间件顺序与 Controller 的特性。
+本项目在 UseClinicPipeline 中显式调用 UseRouting，再执行认证、授权、限流和 CSRF，并调用 MapControllers 映射 Controller。阅读时要同时看中间件顺序与 Controller 的特性。
 
 本项目先设置关联标识和响应头，再统一处理异常，随后执行认证、授权、限流和自定义 CSRF 校验。OisController 的 `[Authorize(Policy = "ois")]` 作用于整个 Controller，Workflow 还会校验具体业务操作的责任角色。
 
@@ -585,7 +562,7 @@ public class HealthTests
 }
 ```
 
-测试项目需要能访问 Program；本项目已有显式 public Program 和 CreateHostBuilder。Factory 创建 TestServer，测试可以覆盖服务注册和配置；它不会自动准备 MySQL、连接串或迁移。对 ClinicFlow 来说，直接运行 Main 会迁移和初始化用户；Factory 通过 CreateHostBuilder 创建宿主时不会执行 Main 中的初始化代码，因此测试需要准备隔离配置、数据库迁移与种子。
+测试项目需要能访问入口类型；本项目使用 `public partial class Program` 暴露顶层语句生成的 Program。Factory 创建 TestServer，测试可以覆盖服务注册和配置。由于本项目的启动代码会执行迁移及账号初始化，Factory 测试必须在启动前准备好隔离数据库配置，不可直接指向应用数据库。
 
 本仓库已有 HTTP 脚本，不要求再增加一套同功能的 Factory 测试。学习重点是理解测试如何启动应用，以及如何隔离它使用的依赖。
 
@@ -632,7 +609,7 @@ public class HealthTests
 
 | 步骤 | 练习 | 完成标准 |
 | --- | --- | --- |
-| 1 | 跑通项目，阅读 Program.cs 与 Startup.cs | 能指出服务注册、启动迁移、管道、端点与静态文件托管 |
+| 1 | 跑通项目，阅读 Program.cs 与 Hosting/ | 能指出服务注册、启动迁移、管道、端点与静态文件托管 |
 | 2 | 完成第 7 节独立 greetings API | curl 验证成功及空名称 400，能解释参数来源 |
 | 3 | 在学习分支增加受 OIS 策略保护的患者只读查询 | 通过服务查询、返回 DTO，支持分页并传 CancellationToken |
 | 4 | 为查询补齐 HTTP 验证与 OpenAPI 描述 | 未登录 401，合法用户可读，非法参数按约定返回错误 |
@@ -646,7 +623,7 @@ public class HealthTests
 
 按这个顺序读，能逐步解释一次请求为何得到最终结果：
 
-1. [`backend/Program.cs`](../backend/Program.cs)：宿主、启动迁移；再读 [`backend/Startup.cs`](../backend/Startup.cs) 的配置、DI 和请求管道。
+1. [`backend/Program.cs`](../backend/Program.cs)：宿主、启动迁移；再读 [`backend/Hosting/ServiceCollectionExtensions.cs`](../backend/Hosting/ServiceCollectionExtensions.cs) 的 DI 配置及 [`backend/Hosting/WebApplicationExtensions.cs`](../backend/Hosting/WebApplicationExtensions.cs) 的请求管道。
 2. [`backend/ClinicDb.cs`](../backend/ClinicDb.cs) 与 [`backend/Ois/Models.cs`](../backend/Ois/Models.cs)：实体、关系、索引和并发标记。
 3. [`backend/Ois/Service.cs`](../backend/Ois/Service.cs)：从 [`backend/Controllers/OisController.cs`](../backend/Controllers/OisController.cs) 跟进 Snapshot / Execute。
 4. [`backend/Ois/Workflow.cs`](../backend/Ois/Workflow.cs)：找一个 operation，跟踪其规则和状态变化。

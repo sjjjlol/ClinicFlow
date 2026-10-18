@@ -27,7 +27,7 @@ RUN dotnet restore backend --locked-mode
 RUN dotnet publish backend -c Release --no-restore -o /out
 # 前端静态文件塞进 ASP.NET 的 wwwroot
 COPY --from=frontend /src/frontend/dist/ /out/wwwroot/
-# → 最终一个容器同时服务 API 和前端（Startup.Configure 的静态文件和回退端点托管它）
+# → 最终一个容器同时服务 API 和前端（Hosting/WebApplicationExtensions 的静态文件和回退端点托管它）
 
 # ---- 阶段3：最终运行时镜像（真正部署的只有这个）----
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.12

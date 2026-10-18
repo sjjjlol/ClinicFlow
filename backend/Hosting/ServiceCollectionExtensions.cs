@@ -1,11 +1,9 @@
 using System;
 using System.Threading.RateLimiting;
 using System.Threading.Tasks;
-using ClinicFlow.Middleware;
 using ClinicFlow.Ois;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -13,28 +11,21 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
-namespace ClinicFlow
+namespace ClinicFlow.Hosting
 {
-    public class Startup
+    public static class ServiceCollectionExtensions
     {
-        private readonly IWebHostEnvironment environment;
-
-        public Startup(IConfiguration configuration, IWebHostEnvironment environment)
-        {
-            Configuration = configuration;
-            this.environment = environment;
-        }
-
-        public IConfiguration Configuration { get; }
-
-        public void ConfigureServices(IServiceCollection services)
+        public static IServiceCollection AddClinicServices(
+            this IServiceCollection services,
+            IConfiguration configuration,
+            IHostEnvironment environment)
         {
             // ---- DI 注册区（对照 Spring 的 @Bean 定义；ASP.NET Core 用内置容器，全部显式代码注册，无包扫描）----
             // AddDbContext：注册 EF Core 的 DbContext 为 Scoped（每请求一个实例，≈ JPA 的 EntityManager 生命周期）。
             services.AddDbContext<ClinicDb>(o =>
                 o.UseMySql(
                     // Configuration 统一读取 appsettings.json / 环境变量；?? 是 null 合并运算符（为 null 则取右侧）。
-                    Configuration.GetConnectionString("Clinic")
+                    configuration.GetConnectionString("Clinic")
                         ?? throw new InvalidOperationException("ConnectionStrings__Clinic required"),
                     new MySqlServerVersion(new Version(8, 4, 8))
                 )
@@ -135,25 +126,7 @@ namespace ClinicFlow
             services.AddScoped<OisService>();
             services.AddSingleton(TimeProvider.System);
             services.AddClinicOpenApi();
-        }
-
-        public void Configure(IApplicationBuilder app)
-        {
-            app.UseMiddleware<ResponseHeadersMiddleware>();
-            app.UseMiddleware<ApiExceptionMiddleware>();
-            app.UseDefaultFiles();
-            app.UseStaticFiles();
-            app.UseRouting();
-            app.UseAuthentication();
-            app.UseAuthorization();
-            app.UseRateLimiter();
-            app.UseMiddleware<CsrfMiddleware>();
-            app.UseEndpoints(endpoints =>
-            {
-                endpoints.MapControllers();
-                endpoints.MapOpenApi("/api/openapi/{documentName}.json").RequireAuthorization("ois");
-                endpoints.MapFallbackToFile("/", "index.html");
-            });
+            return services;
         }
     }
 }

@@ -111,7 +111,7 @@ export ConnectionStrings__Learning='Server=127.0.0.1;Port=3310;Database=ef_learn
 
 | 配置层 | 写在哪里 | 解决什么问题 |
 | --- | --- | --- |
-| 连接与 Provider | Startup.ConfigureServices 的 AddDbContext / UseMySql | 连哪台数据库，按哪种数据库版本生成 SQL |
+| 连接与 Provider | AddClinicServices 的 AddDbContext / UseMySql | 连哪台数据库，按哪种数据库版本生成 SQL |
 | 实体映射 | DbContext.OnModelCreating 或 IEntityTypeConfiguration | 表、列、主键、外键、索引、删除行为、并发令牌 |
 | 业务输入规则 | DTO 校验、Service / Domain | 名称是否空白、谁能更新、当前状态能否操作 |
 
@@ -293,19 +293,19 @@ Code First 是本篇的路线：先定义模型再生成迁移。如果要接入
 
 ## 5. 注册数据库连接：看懂每个参数
 
-后面的 Startup.ConfigureServices 会注册以下代码：
+后面的学习工程在 Program.cs 中注册以下代码；ClinicFlow 则将注册封装在 AddClinicServices 中：
 
 ```csharp
-var connection = configuration.GetConnectionString("Learning")
+var connection = builder.Configuration.GetConnectionString("Learning")
     ?? throw new InvalidOperationException("ConnectionStrings__Learning required");
 
-services.AddDbContext<LearningDb>(options =>
+builder.Services.AddDbContext<LearningDb>(options =>
 {
     options.UseMySql(connection, new MySqlServerVersion(new Version(8, 4, 8)), mysql =>
     {
         mysql.CommandTimeout(30);
     });
-    if (environment.IsDevelopment())
+    if (builder.Environment.IsDevelopment())
         options.EnableDetailedErrors();
 });
 ```
@@ -327,38 +327,14 @@ DbContext 作用域、DbContext 池和数据库连接池是三个概念。AddDbC
 
 ## 6. 完整 CRUD 入口：先跑通，再拆业务服务
 
-将学习工程按下面三个文件组织。所需模型来自第 4 节。运行时使用 .NET 10，写法遵守 C# 9 上限和传统 Controller 结构。该局部持久化例子在 Controller 中直接操作 DbContext；回到 ClinicFlow 时，业务写操作仍应走 OisService 的事务、规则、审计与幂等边界。
+将学习工程按下面的 Program 和 Controller 组织。所需模型来自第 4 节。运行时使用 .NET 10，语法上限仍为 C# 9；入口采用顶层语句，API 采用 Controller。该局部持久化例子在 Controller 中直接操作 DbContext；回到 ClinicFlow 时，业务写操作仍应走 OisService 的事务、规则、审计与幂等边界。
 
 `Program.cs`：
 
 ```csharp
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.Hosting;
-
-namespace Learning.Api
-{
-    public class Program
-    {
-        public static void Main(string[] args)
-        {
-            CreateHostBuilder(args).Build().Run();
-        }
-
-        public static IHostBuilder CreateHostBuilder(string[] args)
-        {
-            return Host.CreateDefaultBuilder(args)
-                .ConfigureWebHostDefaults(web => web.UseStartup<Startup>());
-        }
-    }
-}
-```
-
-`Startup.cs`：
-
-```csharp
 using System;
+using Learning.Api;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -366,69 +342,50 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using MySqlConnector;
 
-namespace Learning.Api
+var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddControllers();
+var connection = builder.Configuration.GetConnectionString("Learning")
+    ?? throw new InvalidOperationException("ConnectionStrings__Learning required");
+builder.Services.AddDbContext<LearningDb>(options =>
 {
-    public class Startup
+    options.UseMySql(connection, new MySqlServerVersion(new Version(8, 4, 8)), mysql =>
     {
-        private readonly IConfiguration configuration;
-        private readonly IWebHostEnvironment environment;
+        mysql.CommandTimeout(30);
+    });
+    if (builder.Environment.IsDevelopment())
+        options.EnableDetailedErrors();
+});
 
-        public Startup(IConfiguration configuration, IWebHostEnvironment environment)
-        {
-            this.configuration = configuration;
-            this.environment = environment;
-        }
-
-        public void ConfigureServices(IServiceCollection services)
-        {
-            services.AddControllers();
-            var connection = configuration.GetConnectionString("Learning")
-                ?? throw new InvalidOperationException("ConnectionStrings__Learning required");
-            services.AddDbContext<LearningDb>(options =>
-            {
-                options.UseMySql(connection, new MySqlServerVersion(new Version(8, 4, 8)), mysql =>
-                {
-                    mysql.CommandTimeout(30);
-                });
-                if (environment.IsDevelopment())
-                    options.EnableDetailedErrors();
-            });
-        }
-
-        public void Configure(IApplicationBuilder app)
-        {
-            app.Use(async (ctx, next) =>
-            {
-                try
-                {
-                    await next();
-                }
-                catch (DbUpdateConcurrencyException)
-                {
-                    ctx.Response.StatusCode = 409;
-                    await ctx.Response.WriteAsJsonAsync(new { code = "version_conflict" });
-                }
-                catch (DbUpdateException ex) when (IsMySqlError(ex, 1062))
-                {
-                    ctx.Response.StatusCode = 409;
-                    await ctx.Response.WriteAsJsonAsync(new { code = "duplicate_identifier" });
-                }
-                catch (DbUpdateException ex) when (IsMySqlError(ex, 1451))
-                {
-                    ctx.Response.StatusCode = 409;
-                    await ctx.Response.WriteAsJsonAsync(new { code = "has_related_visits" });
-                }
-            });
-            app.UseRouting();
-            app.UseEndpoints(endpoints => endpoints.MapControllers());
-        }
-
-        private static bool IsMySqlError(DbUpdateException exception, int number)
-        {
-            MySqlException? mysql = exception.InnerException as MySqlException;
-            return mysql != null && mysql.Number == number;
-        }
+var app = builder.Build();
+app.Use(async (ctx, next) =>
+{
+    try
+    {
+        await next();
     }
+    catch (DbUpdateConcurrencyException)
+    {
+        ctx.Response.StatusCode = 409;
+        await ctx.Response.WriteAsJsonAsync(new { code = "version_conflict" });
+    }
+    catch (DbUpdateException ex) when (IsMySqlError(ex, 1062))
+    {
+        ctx.Response.StatusCode = 409;
+        await ctx.Response.WriteAsJsonAsync(new { code = "duplicate_identifier" });
+    }
+    catch (DbUpdateException ex) when (IsMySqlError(ex, 1451))
+    {
+        ctx.Response.StatusCode = 409;
+        await ctx.Response.WriteAsJsonAsync(new { code = "has_related_visits" });
+    }
+});
+app.MapControllers();
+app.Run();
+
+static bool IsMySqlError(DbUpdateException exception, int number)
+{
+    MySqlException? mysql = exception.InnerException as MySqlException;
+    return mysql != null && mysql.Number == number;
 }
 ```
 
@@ -843,7 +800,7 @@ EF 可通过标准 ILogger 管道记录日志；本例不默认启用敏感参�
 
 | 位置与代码 | 实际作用 | 阅读时要注意 |
 | --- | --- | --- |
-| Startup.ConfigureServices：AddDbContext + UseMySql | Scoped ClinicDb、读取 Clinic 连接串、指定 MySQL 8.4.8 | 不是扫描配置文件自动发现数据库 |
+| AddClinicServices：AddDbContext + UseMySql | Scoped ClinicDb、读取 Clinic 连接串、指定 MySQL 8.4.8 | 不是扫描配置文件自动发现数据库 |
 | ClinicDb：Users / Patients / Idempotency | 给常用实体提供 DbSet 属性 | 其他实体可用 db.Set<T>()，不必为每种实体都写属性 |
 | OisModel.Configure<T>：HasKey + HasMaxLength(36) | OIS 字符串 Id 主键及长度 | Id 在应用中生成，不是 MySQL 自增 |
 | OisModel.Configure<T>：IsConcurrencyToken | 保存时检查旧 Version | Workflow 负责实际 Version++ |
