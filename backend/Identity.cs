@@ -1,5 +1,4 @@
 using System.Security.Claims;
-using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
@@ -36,74 +35,7 @@ public static class Identity
         await db.SaveChangesAsync();
     }
 
-    public static void MapIdentity(this WebApplication app)
-    {
-        // 发放 CSRF 令牌：前端先 GET 它，之后写操作在 X-CSRF-TOKEN 头回传。
-        // (HttpContext ctx, IAntiforgery anti)：HttpContext 由框架传入，IAntiforgery 由 DI 注入。
-        app.MapGet(
-            "/api/auth/csrf",
-            (HttpContext ctx, IAntiforgery anti) =>
-                new { token = anti.GetAndStoreTokens(ctx).RequestToken }
-        );
-        app.MapPost(
-                "/api/auth/login",
-                async (Login input, ClinicDb db, HttpContext ctx, CancellationToken ct) =>
-                {
-                    // FindAsync([主键])：按主键查询，[...] 是 object[] 集合表达式（复合主键时放多个值）。
-                    var user = await db.Users.FindAsync(
-                        [(input.Username ?? "").Trim().ToLowerInvariant()],
-                        ct
-                    );
-                    if (
-                        user is null
-                        || !Roles.Contains(user.Role)
-                        || new PasswordHasher<DemoUser>().VerifyHashedPassword(
-                            user,
-                            user.PasswordHash,
-                            input.Password ?? ""
-                        ) == PasswordVerificationResult.Failed // 枚举比较（≈ Java enum ==）
-                    )
-                        // Results.Json(..., statusCode: 401)：显式状态码的 JSON 响应；
-                        // statusCode: 是命名参数（Java 没有，≈ 更清晰的参数传递）。
-                        return Results.Json(
-                            new { code = "invalid_credentials", message = "账号或密码不正确" },
-                            statusCode: 401
-                        );
-                    await SignIn(user, ctx);
-                    return Results.Ok(Profile(user));
-                }
-            )
-            // 端点限流策略（Program.cs 注册的 "login" 固定窗口）。
-            .RequireRateLimiting("login");
-        app.MapPost(
-                "/api/auth/logout",
-                async (HttpContext ctx) =>
-                {
-                    await ctx.SignOutAsync(); // 清除会话 Cookie
-                    return Results.NoContent(); // 204 ≈ ResponseEntity.noContent()
-                }
-            )
-            .RequireAuthorization();
-        app.MapGet(
-                "/api/auth/me",
-                (HttpContext ctx) =>
-                    new
-                    {
-                        name = ctx.User.Identity!.Name,
-                        role = ctx.User.FindFirstValue(ClaimTypes.Role),
-                    }
-            )
-            .RequireAuthorization();
-    }
-
-    static object Profile(DemoUser user) =>
-        new
-        {
-            name = user.Id,
-            role = user.Role,
-        };
-
-    static Task SignIn(DemoUser user, HttpContext ctx)
+    public static Task SignIn(DemoUser user, HttpContext ctx)
     {
         var claims = new List<Claim>
         {
@@ -121,8 +53,7 @@ public static class Identity
 
     static readonly string[] Roles = ["Scheduler", "Clinician", "Physicist"];
 
-    public static bool IsStaff(ClaimsPrincipal principal) => Roles.Any(principal.IsInRole);
+    public static bool IsStaffRole(string role) => Roles.Contains(role);
 
-    // record DTO：登录请求体。JSON {username, password} 自动绑定（Web 默认 camelCase 匹配）。
-    public record Login(string Username, string Password);
+    public static bool IsStaff(ClaimsPrincipal principal) => Roles.Any(principal.IsInRole);
 }

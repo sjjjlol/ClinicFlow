@@ -1,5 +1,4 @@
 using System.Data;
-using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -192,35 +191,4 @@ public class OisService(ClinicDb db, TimeProvider clock)
 
     static string Hash(string text) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
-}
-
-public static class OisEndpoints
-{
-    public static void MapOis(this WebApplication app)
-    {
-        var group = app.MapGroup("/api/ois").RequireAuthorization("ois");
-        group.MapGet(
-            "/workspace",
-            (OisService service, HttpContext ctx, CancellationToken ct) => service.Snapshot(ctx.User.FindFirstValue(ClaimTypes.NameIdentifier)!, ct)
-        );
-        group.MapPost(
-            "/commands/{operation}",
-            (
-                string operation,
-                OisCommand input,
-                OisService service,
-                HttpContext ctx,
-                CancellationToken ct
-            ) =>
-                service.Execute(
-                    operation,
-                    input,
-                    ctx.User.FindFirstValue(ClaimTypes.NameIdentifier)!,
-                    ctx.User.FindFirstValue(ClaimTypes.Role)!,
-                    ctx.Request.Headers["Idempotency-Key"].ToString(),
-                    ctx.TraceIdentifier,
-                    ct
-                )
-        );
-    }
 }

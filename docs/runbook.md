@@ -42,8 +42,10 @@ npm --prefix frontend run dev
 ./scripts/test.sh
 npm --prefix frontend run build
 npm --prefix frontend run format:check
-# 需要 API，会在目标应用数据库写入演示数据
+# 需要 API：认证、OIS 与 Controller 回归，会在目标应用数据库写入演示数据
 ./scripts/http-tests.sh
+# 可选：另验证登录 429 / Retry-After；会耗尽当前 IP 登录配额，后续登录需等待窗口恢复
+VERIFY_LOGIN_RATE_LIMIT=1 ./scripts/http-tests.sh
 # 仅针对打包应用/容器，验证首页、资源与已移除路径
 node tests/http-ui.mjs
 # 隔离库的迁移与备份恢复演练
