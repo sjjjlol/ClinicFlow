@@ -19,8 +19,3 @@ await using (WebApplication app = builder.Build())
     app.UseClinicPipeline();
     await app.RunAsync();
 }
-
-// 为集成测试暴露入口类型，启动代码由顶层语句生成。
-public partial class Program
-{
-}

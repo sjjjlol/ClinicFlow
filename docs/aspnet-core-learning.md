@@ -496,7 +496,7 @@ app.Use(async (context, next) =>
 | HTTP 测试 | 绑定、Cookie、CSRF、状态码、接口契约 | `tests/http-ois.mjs`、`tests/auth.mjs` |
 | 浏览器与部署冒烟 | 工作台流程、静态资源、打包后可访问 | 前端 E2E、`tests/http-ui.mjs` |
 
-xUnit 的 `[Fact]` 表示普通测试，`[Theory]` + `[InlineData]` 用于参数化测试。一般 ASP.NET Core 项目也常用 `WebApplicationFactory<Program>` 测试完整 HTTP 管道；本项目当前 HTTP 测试通过 Node 脚本访问运行中的服务，不能因入口有 `partial Program` 就认为已有 Factory 测试。
+xUnit 的 `[Fact]` 表示普通测试，`[Theory]` + `[InlineData]` 用于参数化测试。一般 ASP.NET Core 项目也常用 `WebApplicationFactory<Program>` 测试完整 HTTP 管道；本项目当前 HTTP 测试通过 Node 脚本访问运行中的服务，没有使用 Factory 测试，因此不额外声明 public Program 类型。
 
 开始学习时先运行不依赖数据库的规则测试：
 
@@ -562,7 +562,7 @@ public class HealthTests
 }
 ```
 
-测试项目需要能访问入口类型；本项目使用 `public partial class Program` 暴露顶层语句生成的 Program。Factory 创建 TestServer，测试可以覆盖服务注册和配置。由于本项目的启动代码会执行迁移及账号初始化，Factory 测试必须在启动前准备好隔离数据库配置，不可直接指向应用数据库。
+上述示例需要测试项目能访问入口类型；如果未来引入 Factory 测试，可在入口补充 `public partial class Program { }`，或通过 InternalsVisibleTo 向测试程序集开放访问。目前项目没有这种依赖，入口只保留顶层语句。Factory 创建 TestServer，测试可以覆盖服务注册和配置。由于本项目的启动代码会执行迁移及账号初始化，Factory 测试必须在启动前准备好隔离数据库配置，不可直接指向应用数据库。
 
 本仓库已有 HTTP 脚本，不要求再增加一套同功能的 Factory 测试。学习重点是理解测试如何启动应用，以及如何隔离它使用的依赖。
 
