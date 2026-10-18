@@ -1,3 +1,5 @@
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
 namespace ClinicFlow.Middleware
 {
     public sealed class ResponseHeadersMiddleware

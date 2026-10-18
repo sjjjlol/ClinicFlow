@@ -31,5 +31,5 @@ for (const endpoint of ['/api/agent/config','/api/appointments','/api/resources'
 assert.equal((await clinician.request('/api/auth/register',{username:'removed',password:'unused-password',displayName:'removed'})).status,404);
 const schema=(await clinician.request('/api/openapi/v1.json')).body;
 assert.ok(Object.keys(schema.paths).every(p=>p.startsWith('/api/auth/')||p.startsWith('/api/ois/')||p==='/api/health'));
-assert.ok(schema.paths['/api/ois/commands/{operation}'].post.parameters.some(p=>p.name==='Idempotency-Key'));
+assert.ok(schema.paths['/api/ois/commands/book'].post.parameters.some(p=>p.name==='Idempotency-Key'));
 console.log('PASS OIS HTTP: roles, CSRF, plan registration/review, release blockers, conflicts, cancel/restore, versions and idempotency');

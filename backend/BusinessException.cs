@@ -1,7 +1,15 @@
-namespace ClinicFlow;
-
-public class BusinessException(string code, string message, int status = 409) : Exception(message)
+using System;
+namespace ClinicFlow
 {
-    public string Code { get; } = code;
-    public int Status { get; } = status;
+    public class BusinessException : Exception
+    {
+        public BusinessException(string code, string message, int status = 409) : base(message)
+        {
+            Code = code;
+            Status = status;
+        }
+
+        public string Code { get; }
+        public int Status { get; }
+    }
 }

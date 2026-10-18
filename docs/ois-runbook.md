@@ -10,7 +10,7 @@ OIS 使用领域表及草稿表及患者、用户和幂等记录表；[数据库
 
 GET `/api/ois/workspace`：一致性快照，含档案、处方、计划、资源、预约及其放行阻碍、执行、待办、患者和审计。
 
-POST `/api/ois/commands/{operation}`：Cookie 身份认证、CSRF 头和 `Idempotency-Key` 必需。多数修改需要 `id` 与目标记录当前 `version`；`prescribe` 使用档案 id/version，`plan` 使用 `caseId` 和档案 version。客户端不得自行指定操作者。
+POST `/api/ois/commands/{operation}`（这里的 `{operation}` 表示下表中的固定操作名称，每个操作对应独立 Controller Action；OpenAPI 分别列出实际路径）：Cookie 身份认证、CSRF 头和 `Idempotency-Key` 必需。多数修改需要 `id` 与目标记录当前 `version`；`prescribe` 使用档案 id/version，`plan` 使用 `caseId` 和档案 version。客户端不得自行指定操作者。
 
 |操作|角色|主要字段|
 |---|---|---|

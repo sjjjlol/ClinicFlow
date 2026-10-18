@@ -2,7 +2,7 @@
 
 本文面向写过 Java、熟悉 Spring Boot 和关系数据库的开发者。目标是理解一个 ASP.NET Core Web API 从需求、建项目、编码到测试和部署的完整过程，并能沿着 ClinicFlow 的代码完成一次小功能开发。
 
-本文以 main 分支当前配置为准：.NET SDK `10.0.401`、目标框架 `net10.0`、ASP.NET Core、EF Core `9.0.20`、Pomelo MySQL Provider `9.0.0`。SDK 版本来自 `global.json`，依赖版本来自 `backend/ClinicFlow.csproj`。这些版本承担不同职责，不要求数字全部相同；升级时要核对 Provider 与 EF Core 的兼容性，不能只把所有包改为与 .NET 相同的主版本。
+本文以 main 分支当前配置为准：.NET SDK `10.0.401`、目标框架 `net10.0`、ASP.NET Core、EF Core `9.0.20`、Pomelo MySQL Provider `9.0.0`。代码风格采用 .NET 5 时期的 C# 9 上限，使用普通类、显式构造函数及 Controller；运行时仍是 .NET 10。SDK 版本来自 `global.json`，依赖版本来自 `backend/ClinicFlow.csproj`。这些版本承担不同职责，不要求数字全部相同；升级时要核对 Provider 与 EF Core 的兼容性，不能只把所有包改为与 .NET 相同的主版本。
 
 ## 阅读路线
 
@@ -16,7 +16,7 @@
 | 4. 配置与装配 | 配置从哪里来，对象由谁创建 | `backend/Program.cs`、`backend/Startup.cs`、`scripts/api.sh` |
 | 5. 建模与持久化 | 表、关系、查询和升级如何实现 | `backend/ClinicDb.cs`、`backend/Migrations/` |
 | 6. 实现业务 | 规则、事务、并发、幂等放在哪里 | `backend/Ois/Workflow.cs`、`backend/Ois/Service.cs` |
-| 7. 暴露 HTTP API | 请求如何绑定，响应如何生成 | `OisController.Execute`、`backend/ApiDocumentation.cs` |
+| 7. 暴露 HTTP API | 请求如何绑定，响应如何生成 | `OisController.Book` / `Prescribe` 等 Action、`backend/ApiDocumentation.cs` |
 | 8. 横切能力 | 错误、身份、权限、日志怎么统一 | `backend/Startup.cs`、`backend/Middleware/`、`backend/Identity.cs` |
 | 9. 测试与交付 | 怎么证明正确，怎么运行产物 | `tests/`、`Dockerfile`、`.github/workflows/ci.yml` |
 
@@ -80,7 +80,7 @@ HTTP POST /api/ois/commands/{operation}
 
 `restore` 解析依赖，`build` 编译，`run` 构建并运行开发项目，`test` 运行测试，`publish` 生成部署产物。`bin/`、`obj/` 是构建输出，不应手工修改。
 
-仓库的 `scripts/dotnet.sh` 优先使用 PATH 中的 `dotnet`，否则尝试项目约定的本地 SDK 路径；它本身不安装 SDK。`global.json` 选择 SDK，`TargetFramework` 决定编译目标，二者是不同设置。`Directory.Build.props` 给子项目共享可空分析、隐式 using、依赖锁文件等设置。
+仓库的 `scripts/dotnet.sh` 优先使用 PATH 中的 `dotnet`，否则尝试项目约定的本地 SDK 路径；它本身不安装 SDK。`global.json` 选择 SDK，`TargetFramework` 决定编译目标，二者是不同设置。`Directory.Build.props` 为后端、测试和升级工具指定 C# 9、可空分析、禁用隐式 using 和启用依赖锁文件。源码必须显式写 using；`Directory.Build.targets` 关闭会生成 C# 11+ 代码的 OpenAPI XML 注释生成器。
 
 ### 2.3 读懂工程文件与常用开发命令
 
@@ -136,10 +136,14 @@ public class Patient
     public string Name { get; set; } = "";
 }
 
-public record CreatePatientRequest(string Name, string Identifier);
+public class CreatePatientRequest
+{
+    public string Name { get; set; } = "";
+    public string Identifier { get; set; } = "";
+}
 ```
 
-`{ get; set; }` 是属性，调用方用 `patient.Name` 访问。`record` 适合表达 DTO 和值语义数据，近似 Java record，但 C# record class 不保证深层不可变，内部集合仍可变化。数据库实体通常使用 class。
+`{ get; set; }` 是属性，调用方用 `patient.Name` 访问。本项目的实体和 DTO 都采用普通 class；通过 `new CreatePatientRequest { Name = "模拟患者" }` 初始化字段，避免依赖 record 和 with 简写。
 
 `string?` 表示允许 null 的引用；`int?` 是允许 null 的值类型。启用 Nullable 后，非空引用约定主要由编译器分析，不能替代运行时请求校验。`!` 只是告诉编译器“我确信它非空”，不会自动检查或阻止空引用异常。
 
@@ -151,11 +155,11 @@ public record CreatePatientRequest(string Name, string Identifier);
 | `value ?? fallback` | 左侧为 null 时取右侧 |
 | `user?.Id` | user 为 null 时结果为 null |
 | `new Patient { Name = "模拟患者" }` | 对象初始化器，设置属性 |
-| `new(Id: id, Version: 1)` | 根据上下文推断类型，并使用命名参数 |
-| `[a, b]` | 集合表达式，目标类型由上下文决定 |
-| `namespace ClinicFlow;` | 文件作用域命名空间；目录结构不强制决定命名空间 |
+| `new OisCommand { Id = id, Version = 1 }` | 显式类型和对象初始化器 |
+| `new List<string> { "a", "b" }` | 显式创建并初始化集合 |
+| `namespace ClinicFlow { ... }` | 块命名空间；目录结构不强制决定命名空间 |
 | `this IServiceCollection services` | 静态扩展方法参数，例如 `services.AddClinicOpenApi()` |
-| `class OisService(ClinicDb db, TimeProvider clock)` | 主构造函数，DI 仍通过构造参数提供依赖 |
+| `public OisService(ClinicDb db, TimeProvider clock) { ... }` | 普通构造函数，DI 通过参数提供依赖 |
 
 `using ClinicFlow;` 类似 import；`using var scope = ...` 则是资源管理，类似 try-with-resources。`await using` 对应异步释放，例如数据库事务。
 
@@ -233,8 +237,17 @@ public class SchedulingOptions
     public int MaxAdvanceDays { get; set; }
 }
 
-public class BookingWindow(IOptions<SchedulingOptions> options, TimeProvider clock)
+public class BookingWindow
 {
+    private readonly IOptions<SchedulingOptions> options;
+    private readonly TimeProvider clock;
+
+    public BookingWindow(IOptions<SchedulingOptions> options, TimeProvider clock)
+    {
+        this.options = options;
+        this.clock = clock;
+    }
+
     public bool Allows(DateTimeOffset start)
     {
         var now = clock.GetUtcNow();
@@ -248,7 +261,7 @@ public class BookingWindow(IOptions<SchedulingOptions> options, TimeProvider clo
 ```csharp
 services.AddOptions<SchedulingOptions>()
     .Bind(Configuration.GetSection(SchedulingOptions.SectionName))
-    .Validate(o => o.MaxAdvanceDays is >= 1 and <= 365,
+    .Validate(o => o.MaxAdvanceDays >= 1 && o.MaxAdvanceDays <= 365,
         "Scheduling:MaxAdvanceDays must be between 1 and 365")
     .ValidateOnStart();
 services.AddSingleton(TimeProvider.System);
@@ -350,11 +363,11 @@ EF Core 对支持事务的 Provider，单次 `SaveChanges` 默认在事务内完
 
 ### 7.1 本项目的参数从哪里来
 
-在 `Controllers/OisController.cs` 中，类上声明 `[Route("api/ois")]`，Execute 方法声明 `[HttpPost("commands/{operation}")]`：
+在 `Controllers/OisController.cs` 中，类上声明 `[Route("api/ois")]`，Book 方法声明 `[HttpPost("commands/book")]`，Prescribe 等操作也有各自的 Action。已支持的 URL 保持不变：
 
 | 参数或依赖 | 来源 |
 | --- | --- |
-| `[FromRoute] string operation` | 路由中的 `{operation}` |
+| 操作名称 | 由 Action 固定，例如 Book 传入 `"book"`，不接受客户端任意分发 |
 | `[FromBody] OisCommand input` | POST JSON 请求体 |
 | `OisService service` | Controller 构造函数注入 |
 | `HttpContext`、`User`、`Request` | ControllerBase 提供的当前请求属性 |
@@ -366,16 +379,44 @@ EF Core 对支持事务的 Provider，单次 `SaveChanges` 默认在事务内完
 在第 2 节的临时工程中，Program.cs 注册和映射 Controller：
 
 ```csharp
-var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddControllers();
-var app = builder.Build();
-app.MapControllers();
-app.Run();
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+
+public class Program
+{
+    public static void Main(string[] args)
+    {
+        CreateHostBuilder(args).Build().Run();
+    }
+
+    public static IHostBuilder CreateHostBuilder(string[] args)
+    {
+        return Host.CreateDefaultBuilder(args)
+            .ConfigureWebHostDefaults(web => web.UseStartup<Startup>());
+    }
+}
+
+public class Startup
+{
+    public void ConfigureServices(IServiceCollection services)
+    {
+        services.AddControllers();
+    }
+
+    public void Configure(IApplicationBuilder app)
+    {
+        app.UseRouting();
+        app.UseEndpoints(endpoints => endpoints.MapControllers());
+    }
+}
 ```
 
-该学习工程用精简入口；ClinicFlow 采用第 4 节的 Program + Startup。另建 `Controllers/GreetingsController.cs`：
+该学习工程同样采用 Program + Startup。另建 `Controllers/GreetingsController.cs`：
 
 ```csharp
+using System;
 using Microsoft.AspNetCore.Mvc;
 
 [ApiController]
@@ -403,7 +444,7 @@ public class GreetingRequest
 
 `[ApiController]`、`[HttpPost]` 类似 Spring MVC 的类/方法注解。继承 ControllerBase 提供 Ok、Unauthorized、NoContent、BadRequest、NotFound 等方法；返回 IActionResult 或 Task<IActionResult> 表达 HTTP 响应。依赖通过构造函数注入，业务逻辑委托给 Service。
 
-本项目按认证、OIS、健康查询和回退拆分 Controller。请求 DTO 放在 Contracts 或对应业务模块；现有 OisCommand 保留在 OIS 模块。继续新增接口时应遵守同样边界。
+本项目按认证、OIS、健康查询和回退拆分 Controller。请求 DTO 放在 Contracts 或对应业务模块；现有 OisCommand 为普通 DTO 类，保留在 OIS 模块。21 个命令各有 Action，业务调用由私有 ExecuteCommand 复用；OpenAPI 列出每个实际路径。继续新增接口时应遵守同样边界。
 
 ### 7.4 绑定、校验、业务规则分开理解
 

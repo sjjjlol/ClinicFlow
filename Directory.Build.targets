@@ -1,0 +1,9 @@
+<Project>
+  <!-- .NET 10 的 OpenAPI XML 注释生成器生成 C# 11+ 语法。
+       本项目由 ApiExplorer 和 ApiDocumentation 在运行时生成文档，保留 C# 9 编译上限。 -->
+  <Target Name="DisableOpenApiXmlCommentGenerator" BeforeTargets="CoreCompile">
+    <ItemGroup>
+      <Analyzer Remove="@(Analyzer)" Condition="'%(Analyzer.Filename)' == 'Microsoft.AspNetCore.OpenApi.SourceGenerators'" />
+    </ItemGroup>
+  </Target>
+</Project>

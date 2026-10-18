@@ -1,9 +1,17 @@
+using System;
 using System.Threading.RateLimiting;
+using System.Threading.Tasks;
 using ClinicFlow.Middleware;
 using ClinicFlow.Ois;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace ClinicFlow
 {
@@ -48,7 +56,7 @@ namespace ClinicFlow
                     // lambda 表达式 c => { ... } 与 Java 相同；Task.CompletedTask ≈ 立即完成的 CompletableFuture。
                     o.Events.OnValidatePrincipal = async c =>
                     {
-                        if (c.Principal is null || !Identity.IsStaff(c.Principal))
+                        if (c.Principal == null || !Identity.IsStaff(c.Principal))
                         {
                             c.RejectPrincipal();
                             await Microsoft.AspNetCore.Authentication.AuthenticationHttpContextExtensions.SignOutAsync(c.HttpContext);

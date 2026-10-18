@@ -122,30 +122,61 @@ export ConnectionStrings__Learning='Server=127.0.0.1;Port=3310;Database=ef_learn
 在 Learning.Api 中新建 `Models.cs`，内容如下：
 
 ```csharp
-namespace Learning.Api;
-
-public class LearningPatient
+using System;
+using System.Collections.Generic;
+namespace Learning.Api
 {
-    public int Id { get; set; }
-    public string Name { get; set; } = "";
-    public string Identifier { get; set; } = "";
-    public string? Note { get; set; }
-    public int Version { get; set; } = 1;
-    public List<LearningVisit> Visits { get; set; } = [];
-}
+    public class LearningPatient
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+        public string Identifier { get; set; } = "";
+        public string? Note { get; set; }
+        public int Version { get; set; } = 1;
+        public List<LearningVisit> Visits { get; set; } = new List<LearningVisit>();
+    }
 
-public class LearningVisit
-{
-    public int Id { get; set; }
-    public int PatientId { get; set; }
-    public LearningPatient Patient { get; set; } = null!;
-    public DateTime StartsUtc { get; set; }
-    public decimal Fee { get; set; }
-}
+    public class LearningVisit
+    {
+        public int Id { get; set; }
+        public int PatientId { get; set; }
+        public LearningPatient Patient { get; set; } = null!;
+        public DateTime StartsUtc { get; set; }
+        public decimal Fee { get; set; }
+    }
 
-public record CreatePatientRequest(string? Name, string? Identifier, string? Note);
-public record UpdatePatientRequest(string? Name, string? Note, int Version);
-public record PatientResponse(int Id, string Name, string Identifier, string? Note, int Version);
+    public class CreatePatientRequest
+    {
+        public string? Name { get; set; }
+        public string? Identifier { get; set; }
+        public string? Note { get; set; }
+    }
+
+    public class UpdatePatientRequest
+    {
+        public string? Name { get; set; }
+        public string? Note { get; set; }
+        public int Version { get; set; }
+    }
+
+    public class PatientResponse
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+        public string Identifier { get; set; } = "";
+        public string? Note { get; set; }
+        public int Version { get; set; }
+
+        public PatientResponse(int id, string name, string identifier, string? note, int version)
+        {
+            Id = id;
+            Name = name;
+            Identifier = identifier;
+            Note = note;
+            Version = version;
+        }
+    }
+}
 ```
 
 Patient 是一端，Visit 是多端；PatientId 是真实外键字段，Visits / Patient 是对象导航属性。导航属性不等于数据库列，不会因为属性存在就自动加载关联数据。`null!` 只是压制编译器警告，未加载导航时不能假定它已有值。
@@ -157,35 +188,40 @@ DTO 独立于实体：创建请求不能设置 Id 或 Version，更新请求也�
 ```csharp
 using Microsoft.EntityFrameworkCore;
 
-namespace Learning.Api;
-
-public class LearningDb(DbContextOptions<LearningDb> options) : DbContext(options)
+namespace Learning.Api
 {
-    public DbSet<LearningPatient> Patients => Set<LearningPatient>();
-    public DbSet<LearningVisit> Visits => Set<LearningVisit>();
-
-    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    public class LearningDb : DbContext
     {
-        var patient = modelBuilder.Entity<LearningPatient>();
-        patient.ToTable("learning_patients");
-        patient.HasKey(p => p.Id);
-        patient.Property(p => p.Id).ValueGeneratedOnAdd();
-        patient.Property(p => p.Name).HasMaxLength(100).IsRequired();
-        patient.Property(p => p.Identifier).HasMaxLength(40).IsRequired();
-        patient.Property(p => p.Note).HasMaxLength(500).IsRequired(false);
-        patient.Property(p => p.Version).IsConcurrencyToken();
-        patient.HasIndex(p => p.Identifier).IsUnique();
+        public LearningDb(DbContextOptions<LearningDb> options) : base(options)
+        {
+        }
 
-        var visit = modelBuilder.Entity<LearningVisit>();
-        visit.ToTable("learning_visits");
-        visit.HasKey(v => v.Id);
-        visit.Property(v => v.StartsUtc).HasColumnType("datetime(6)");
-        visit.Property(v => v.Fee).HasPrecision(10, 2);
-        visit.HasIndex(v => new { v.PatientId, v.StartsUtc });
-        visit.HasOne(v => v.Patient)
-            .WithMany(p => p.Visits)
-            .HasForeignKey(v => v.PatientId)
-            .OnDelete(DeleteBehavior.Restrict);
+        public DbSet<LearningPatient> Patients => Set<LearningPatient>();
+        public DbSet<LearningVisit> Visits => Set<LearningVisit>();
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            var patient = modelBuilder.Entity<LearningPatient>();
+            patient.ToTable("learning_patients");
+            patient.HasKey(p => p.Id);
+            patient.Property(p => p.Id).ValueGeneratedOnAdd();
+            patient.Property(p => p.Name).HasMaxLength(100).IsRequired();
+            patient.Property(p => p.Identifier).HasMaxLength(40).IsRequired();
+            patient.Property(p => p.Note).HasMaxLength(500).IsRequired(false);
+            patient.Property(p => p.Version).IsConcurrencyToken();
+            patient.HasIndex(p => p.Identifier).IsUnique();
+
+            var visit = modelBuilder.Entity<LearningVisit>();
+            visit.ToTable("learning_visits");
+            visit.HasKey(v => v.Id);
+            visit.Property(v => v.StartsUtc).HasColumnType("datetime(6)");
+            visit.Property(v => v.Fee).HasPrecision(10, 2);
+            visit.HasIndex(v => new { v.PatientId, v.StartsUtc });
+            visit.HasOne(v => v.Patient)
+                .WithMany(p => p.Visits)
+                .HasForeignKey(v => v.PatientId)
+                .OnDelete(DeleteBehavior.Restrict);
+        }
     }
 }
 ```
@@ -257,19 +293,19 @@ Code First 是本篇的路线：先定义模型再生成迁移。如果要接入
 
 ## 5. 注册数据库连接：看懂每个参数
 
-后面的完整 Program.cs 会注册以下代码：
+后面的 Startup.ConfigureServices 会注册以下代码：
 
 ```csharp
-var connection = builder.Configuration.GetConnectionString("Learning")
+var connection = configuration.GetConnectionString("Learning")
     ?? throw new InvalidOperationException("ConnectionStrings__Learning required");
 
-builder.Services.AddDbContext<LearningDb>(options =>
+services.AddDbContext<LearningDb>(options =>
 {
     options.UseMySql(connection, new MySqlServerVersion(new Version(8, 4, 8)), mysql =>
     {
         mysql.CommandTimeout(30);
     });
-    if (builder.Environment.IsDevelopment())
+    if (environment.IsDevelopment())
         options.EnableDetailedErrors();
 });
 ```
@@ -291,134 +327,223 @@ DbContext 作用域、DbContext 池和数据库连接池是三个概念。AddDbC
 
 ## 6. 完整 CRUD 入口：先跑通，再拆业务服务
 
-将学习工程的 `Program.cs` 替换成以下代码。所需类型来自第 4 节两个文件。这是局部持久化教学例子，端点中直接操作 DbContext；回到 ClinicFlow 时，业务写操作仍应走 OisService 的事务、规则、审计与幂等边界。
+将学习工程按下面三个文件组织。所需模型来自第 4 节。运行时使用 .NET 10，写法遵守 C# 9 上限和传统 Controller 结构。该局部持久化例子在 Controller 中直接操作 DbContext；回到 ClinicFlow 时，业务写操作仍应走 OisService 的事务、规则、审计与幂等边界。
+
+`Program.cs`：
 
 ```csharp
-using Learning.Api;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Hosting;
+
+namespace Learning.Api
+{
+    public class Program
+    {
+        public static void Main(string[] args)
+        {
+            CreateHostBuilder(args).Build().Run();
+        }
+
+        public static IHostBuilder CreateHostBuilder(string[] args)
+        {
+            return Host.CreateDefaultBuilder(args)
+                .ConfigureWebHostDefaults(web => web.UseStartup<Startup>());
+        }
+    }
+}
+```
+
+`Startup.cs`：
+
+```csharp
+using System;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using MySqlConnector;
 
-var builder = WebApplication.CreateBuilder(args);
-var connection = builder.Configuration.GetConnectionString("Learning")
-    ?? throw new InvalidOperationException("ConnectionStrings__Learning required");
-builder.Services.AddDbContext<LearningDb>(options =>
+namespace Learning.Api
 {
-    options.UseMySql(connection, new MySqlServerVersion(new Version(8, 4, 8)), mysql =>
+    public class Startup
     {
-        mysql.CommandTimeout(30);
-    });
-    if (builder.Environment.IsDevelopment())
-        options.EnableDetailedErrors();
-});
+        private readonly IConfiguration configuration;
+        private readonly IWebHostEnvironment environment;
 
-var app = builder.Build();
+        public Startup(IConfiguration configuration, IWebHostEnvironment environment)
+        {
+            this.configuration = configuration;
+            this.environment = environment;
+        }
 
-app.Use(async (ctx, next) =>
-{
-    try
-    {
-        await next();
+        public void ConfigureServices(IServiceCollection services)
+        {
+            services.AddControllers();
+            var connection = configuration.GetConnectionString("Learning")
+                ?? throw new InvalidOperationException("ConnectionStrings__Learning required");
+            services.AddDbContext<LearningDb>(options =>
+            {
+                options.UseMySql(connection, new MySqlServerVersion(new Version(8, 4, 8)), mysql =>
+                {
+                    mysql.CommandTimeout(30);
+                });
+                if (environment.IsDevelopment())
+                    options.EnableDetailedErrors();
+            });
+        }
+
+        public void Configure(IApplicationBuilder app)
+        {
+            app.Use(async (ctx, next) =>
+            {
+                try
+                {
+                    await next();
+                }
+                catch (DbUpdateConcurrencyException)
+                {
+                    ctx.Response.StatusCode = 409;
+                    await ctx.Response.WriteAsJsonAsync(new { code = "version_conflict" });
+                }
+                catch (DbUpdateException ex) when (IsMySqlError(ex, 1062))
+                {
+                    ctx.Response.StatusCode = 409;
+                    await ctx.Response.WriteAsJsonAsync(new { code = "duplicate_identifier" });
+                }
+                catch (DbUpdateException ex) when (IsMySqlError(ex, 1451))
+                {
+                    ctx.Response.StatusCode = 409;
+                    await ctx.Response.WriteAsJsonAsync(new { code = "has_related_visits" });
+                }
+            });
+            app.UseRouting();
+            app.UseEndpoints(endpoints => endpoints.MapControllers());
+        }
+
+        private static bool IsMySqlError(DbUpdateException exception, int number)
+        {
+            MySqlException? mysql = exception.InnerException as MySqlException;
+            return mysql != null && mysql.Number == number;
+        }
     }
-    catch (DbUpdateConcurrencyException)
+}
+```
+
+`Controllers/PatientsController.cs`：
+
+```csharp
+using System;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+
+namespace Learning.Api
+{
+    [ApiController]
+    [Route("api/patients")]
+    public class PatientsController : ControllerBase
     {
-        ctx.Response.StatusCode = 409;
-        await ctx.Response.WriteAsJsonAsync(new { code = "version_conflict" });
+        private readonly LearningDb db;
+
+        public PatientsController(LearningDb db)
+        {
+            this.db = db;
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> Create([FromBody] CreatePatientRequest input, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(input.Name) || input.Name.Length > 100
+                || string.IsNullOrWhiteSpace(input.Identifier) || input.Identifier.Length > 40
+                || input.Note?.Length > 500)
+                return BadRequest(new { code = "invalid_patient" });
+
+            var patient = new LearningPatient
+            {
+                Name = input.Name.Trim(),
+                Identifier = input.Identifier.Trim(),
+                Note = input.Note
+            };
+            db.Patients.Add(patient);
+            await db.SaveChangesAsync(ct);
+            return Created($"/api/patients/{patient.Id}", ToResponse(patient));
+        }
+
+        [HttpGet("{id:int}")]
+        public async Task<IActionResult> Get([FromRoute] int id, CancellationToken ct)
+        {
+            var patient = await db.Patients.AsNoTracking()
+                .Where(p => p.Id == id)
+                .Select(p => new PatientResponse(p.Id, p.Name, p.Identifier, p.Note, p.Version))
+                .SingleOrDefaultAsync(ct);
+            if (patient == null)
+                return NotFound();
+            return Ok(patient);
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> List(CancellationToken ct, [FromQuery] string? keyword = null, [FromQuery] int page = 1, [FromQuery] int size = 20)
+        {
+            if (page < 1 || page > 100000 || size < 1 || size > 100)
+                return BadRequest(new { code = "invalid_page" });
+
+            var query = db.Patients.AsNoTracking();
+            if (!string.IsNullOrWhiteSpace(keyword))
+                query = query.Where(p => p.Name.Contains(keyword));
+            var total = await query.CountAsync(ct);
+            var items = await query.OrderBy(p => p.Id)
+                .Skip((page - 1) * size).Take(size)
+                .Select(p => new PatientResponse(p.Id, p.Name, p.Identifier, p.Note, p.Version))
+                .ToListAsync(ct);
+            return Ok(new { total, page, size, items });
+        }
+
+        [HttpPut("{id:int}")]
+        public async Task<IActionResult> Update([FromRoute] int id, [FromBody] UpdatePatientRequest input, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(input.Name) || input.Name.Length > 100
+                || input.Note?.Length > 500 || input.Version < 1)
+                return BadRequest(new { code = "invalid_patient" });
+
+            var patient = await db.Patients.SingleOrDefaultAsync(p => p.Id == id, ct);
+            if (patient == null)
+                return NotFound();
+            if (patient.Version != input.Version)
+                return Conflict(new { code = "version_conflict" });
+
+            patient.Name = input.Name.Trim();
+            patient.Note = input.Note;
+            patient.Version++;
+            await db.SaveChangesAsync(ct);
+            return Ok(ToResponse(patient));
+        }
+
+        [HttpDelete("{id:int}")]
+        public async Task<IActionResult> Delete([FromRoute] int id, [FromQuery] int version, CancellationToken ct)
+        {
+            if (version < 1)
+                return BadRequest(new { code = "invalid_version" });
+            var patient = await db.Patients.SingleOrDefaultAsync(p => p.Id == id, ct);
+            if (patient == null)
+                return NotFound();
+            if (patient.Version != version)
+                return Conflict(new { code = "version_conflict" });
+            db.Patients.Remove(patient);
+            await db.SaveChangesAsync(ct);
+            return NoContent();
+        }
+
+        private static PatientResponse ToResponse(LearningPatient patient)
+        {
+            return new PatientResponse(patient.Id, patient.Name, patient.Identifier, patient.Note, patient.Version);
+        }
     }
-    catch (DbUpdateException ex) when (ex.InnerException is MySqlException { Number: 1062 })
-    {
-        ctx.Response.StatusCode = 409;
-        await ctx.Response.WriteAsJsonAsync(new { code = "duplicate_identifier" });
-    }
-    catch (DbUpdateException ex) when (ex.InnerException is MySqlException { Number: 1451 })
-    {
-        ctx.Response.StatusCode = 409;
-        await ctx.Response.WriteAsJsonAsync(new { code = "has_related_visits" });
-    }
-});
-
-app.MapPost("/api/patients", async (CreatePatientRequest input, LearningDb db, CancellationToken ct) =>
-{
-    if (string.IsNullOrWhiteSpace(input.Name) || input.Name.Length > 100
-        || string.IsNullOrWhiteSpace(input.Identifier) || input.Identifier.Length > 40
-        || input.Note?.Length > 500)
-        return Results.BadRequest(new { code = "invalid_patient" });
-
-    var patient = new LearningPatient
-    {
-        Name = input.Name.Trim(),
-        Identifier = input.Identifier.Trim(),
-        Note = input.Note
-    };
-    db.Patients.Add(patient);
-    await db.SaveChangesAsync(ct);
-    return Results.Created($"/api/patients/{patient.Id}", ToResponse(patient));
-});
-
-app.MapGet("/api/patients/{id:int}", async (int id, LearningDb db, CancellationToken ct) =>
-{
-    var patient = await db.Patients.AsNoTracking()
-        .Where(p => p.Id == id)
-        .Select(p => new PatientResponse(p.Id, p.Name, p.Identifier, p.Note, p.Version))
-        .SingleOrDefaultAsync(ct);
-    return patient is null ? Results.NotFound() : Results.Ok(patient);
-});
-
-app.MapGet("/api/patients", async (
-    LearningDb db, CancellationToken ct, string? keyword = null, int page = 1, int size = 20) =>
-{
-    if (page < 1 || page > 100000 || size < 1 || size > 100)
-        return Results.BadRequest(new { code = "invalid_page" });
-
-    var query = db.Patients.AsNoTracking();
-    if (!string.IsNullOrWhiteSpace(keyword))
-        query = query.Where(p => p.Name.Contains(keyword));
-    var total = await query.CountAsync(ct);
-    var items = await query.OrderBy(p => p.Id)
-        .Skip((page - 1) * size).Take(size)
-        .Select(p => new PatientResponse(p.Id, p.Name, p.Identifier, p.Note, p.Version))
-        .ToListAsync(ct);
-    return Results.Ok(new { total, page, size, items });
-});
-
-app.MapPut("/api/patients/{id:int}", async (
-    int id, UpdatePatientRequest input, LearningDb db, CancellationToken ct) =>
-{
-    if (string.IsNullOrWhiteSpace(input.Name) || input.Name.Length > 100
-        || input.Note?.Length > 500 || input.Version < 1)
-        return Results.BadRequest(new { code = "invalid_patient" });
-
-    var patient = await db.Patients.SingleOrDefaultAsync(p => p.Id == id, ct);
-    if (patient is null)
-        return Results.NotFound();
-    if (patient.Version != input.Version)
-        return Results.Conflict(new { code = "version_conflict" });
-
-    patient.Name = input.Name.Trim();
-    patient.Note = input.Note;
-    patient.Version++;
-    await db.SaveChangesAsync(ct);
-    return Results.Ok(ToResponse(patient));
-});
-
-app.MapDelete("/api/patients/{id:int}", async (
-    int id, int version, LearningDb db, CancellationToken ct) =>
-{
-    if (version < 1)
-        return Results.BadRequest(new { code = "invalid_version" });
-    var patient = await db.Patients.SingleOrDefaultAsync(p => p.Id == id, ct);
-    if (patient is null)
-        return Results.NotFound();
-    if (patient.Version != version)
-        return Results.Conflict(new { code = "version_conflict" });
-    db.Patients.Remove(patient);
-    await db.SaveChangesAsync(ct);
-    return Results.NoContent();
-});
-
-app.Run();
-
-static PatientResponse ToResponse(LearningPatient p) =>
-    new(p.Id, p.Name, p.Identifier, p.Note, p.Version);
+}
 ```
 
 ### 6.1 Create：为什么 Add 后还要 SaveChanges
@@ -507,22 +632,24 @@ dotnet ef database update
 多项目结构、宿主启动有其他依赖、命令行难以构造上下文时，可实现 `IDesignTimeDbContextFactory<T>`。工具找到工厂后用它构造上下文；工厂必须与运行时的 Provider / 映射选项保持一致。
 
 ```csharp
+using System;
 // 可选文件 LearningDbFactory.cs；完整 CRUD 示例不要求添加
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
-namespace Learning.Api;
-
-public class LearningDbFactory : IDesignTimeDbContextFactory<LearningDb>
+namespace Learning.Api
 {
-    public LearningDb CreateDbContext(string[] args)
+    public class LearningDbFactory : IDesignTimeDbContextFactory<LearningDb>
     {
-        var connection = Environment.GetEnvironmentVariable("ConnectionStrings__Learning")
-            ?? throw new InvalidOperationException("Learning connection required");
-        var options = new DbContextOptionsBuilder<LearningDb>()
-            .UseMySql(connection, new MySqlServerVersion(new Version(8, 4, 8)))
-            .Options;
-        return new LearningDb(options);
+        public LearningDb CreateDbContext(string[] args)
+        {
+            var connection = Environment.GetEnvironmentVariable("ConnectionStrings__Learning")
+                ?? throw new InvalidOperationException("Learning connection required");
+            var options = new DbContextOptionsBuilder<LearningDb>()
+                .UseMySql(connection, new MySqlServerVersion(new Version(8, 4, 8)))
+                .Options;
+            return new LearningDb(options);
+        }
     }
 }
 ```
@@ -569,7 +696,7 @@ curl -i http://127.0.0.1:5099/api/patients/1
 
 ## 9. 关联查询、UTC 与参数化 SQL
 
-以下是基于相同模型的局部方法体示例，`db` 是注入的 LearningDb，`ct` 是 CancellationToken，不需要全部粘进 Program.cs。
+以下是基于相同模型的局部方法体示例，`db` 是注入的 LearningDb，`ct` 是 CancellationToken，不需要全部粘进 Controller。
 
 ### 9.1 创建关联对象
 

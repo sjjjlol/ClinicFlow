@@ -50,11 +50,27 @@ for (const path of ['/api/missing', '/legacy', '/legacy/path', '/fhir/r4/metadat
   assert.equal(response.body.code, 'not_found');
 }
 const schema = (await client.request('/api/openapi/v1.json')).body;
-for (const path of ['/api/auth/csrf', '/api/auth/login', '/api/auth/logout', '/api/auth/me', '/api/health', '/api/ois/workspace', '/api/ois/commands/{operation}'])
+const operations = [
+  'case', 'prescribe', 'plan', 'review', 'book', 'reschedule', 'restore', 'cancel',
+  'no-show', 'validate', 'machine', 'consult', 'start', 'finish', 'not-executed',
+  'read-task', 'resolve-task', 'correction', 'save-draft', 'terminate', 'note',
+];
+for (const path of ['/api/auth/csrf', '/api/auth/login', '/api/auth/logout', '/api/auth/me', '/api/health', '/api/ois/workspace'])
   assert.ok(schema.paths[path], path);
-assert.equal(Object.keys(schema.paths).length, 7, 'Fallback controllers must be hidden');
-assert.ok(schema.paths['/api/ois/commands/{operation}'].post.parameters.some(p => p.name === 'Idempotency-Key'));
+for (const operation of operations) {
+  const path = `/api/ois/commands/${operation}`;
+  const post = schema.paths[path]?.post;
+  assert.ok(post, `Each command must expose its own Controller action: ${path}`);
+  assert.ok(post.requestBody, path);
+  assert.ok(post.parameters.some(p => p.name === 'Idempotency-Key'), path);
+  assert.ok(post.parameters.some(p => p.name === 'X-CSRF-TOKEN'), path);
+}
+assert.equal(schema.paths['/api/ois/commands/{operation}'], undefined, 'No generic command dispatcher in OpenAPI');
+assert.equal(Object.keys(schema.paths).length, operations.length + 6, 'Only supported endpoints are documented');
 assert.ok(schema.paths['/api/auth/login'].post.parameters.some(p => p.name === 'X-CSRF-TOKEN'));
+const unknown = await client.request('/api/ois/commands/unknown-operation', {}, crypto.randomUUID());
+assert.equal(unknown.status, 400);
+assert.equal(unknown.body.code, 'invalid_operation');
 
 await client.request('/api/auth/logout', {});
 assert.equal((await client.request('/api/auth/me')).status, 401);

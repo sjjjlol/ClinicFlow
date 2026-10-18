@@ -1,3 +1,7 @@
+using System;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 namespace ClinicFlow.Middleware
 {
     public sealed class ApiExceptionMiddleware
@@ -44,7 +48,7 @@ namespace ClinicFlow.Middleware
             }
             // catch ... when：C# 独有的异常过滤器——只有 when 条件为真才捕获。
             // 这里把 OperationCanceledException（客户端断开/停机取消）排除在 500 之外。
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (!(ex is OperationCanceledException))
             {
                 logger.LogError(ex, "Request failed {CorrelationId}", ctx.TraceIdentifier);
                 ctx.Response.StatusCode = 500;

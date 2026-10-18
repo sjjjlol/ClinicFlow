@@ -1,5 +1,10 @@
+using System.Threading.Tasks;
 using ClinicFlow;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 // 显式 Main 和 Startup：入口负责启动，服务注册和请求管道由 Startup 管理。
 public partial class Program

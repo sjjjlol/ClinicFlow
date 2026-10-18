@@ -18,8 +18,8 @@ RUN npm run build
 # ---- 阶段2：后端发布（.NET SDK 编译镜像）----
 FROM mcr.microsoft.com/dotnet/sdk:10.0.401 AS backend
 WORKDIR /src
-# 构建配置先行：global.json 钉 SDK 版本；Build.props 开 lock 还原
-COPY global.json Directory.Build.props ./
+# 构建配置先行：global.json 钉 SDK；props 指定 C# 9 和依赖锁；targets 调整 OpenAPI 生成器
+COPY global.json Directory.Build.props Directory.Build.targets ./
 COPY backend/ backend/
 # --locked-mode：严格按 packages.lock.json 还原（≈ npm ci）
 RUN dotnet restore backend --locked-mode
@@ -27,7 +27,7 @@ RUN dotnet restore backend --locked-mode
 RUN dotnet publish backend -c Release --no-restore -o /out
 # 前端静态文件塞进 ASP.NET 的 wwwroot
 COPY --from=frontend /src/frontend/dist/ /out/wwwroot/
-# → 最终一个容器同时服务 API 和前端（Program.cs 的 UseStaticFiles/MapFallbackToFile 托管它）
+# → 最终一个容器同时服务 API 和前端（Startup.Configure 的静态文件和回退端点托管它）
 
 # ---- 阶段3：最终运行时镜像（真正部署的只有这个）----
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.12
