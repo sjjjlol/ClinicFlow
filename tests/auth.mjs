@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 const base=process.env.API_URL??'http://127.0.0.1:5080';
 export class Client {
   cookies=new Map(); token='';
-  async request(path,body,key){
-    const res=await fetch(base+path,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json','Cookie':[...this.cookies].map(([k,v])=>`${k}=${v}`).join('; '),'X-CSRF-TOKEN':this.token,...(key?{'Idempotency-Key':key}:{})},body:body===undefined?undefined:JSON.stringify(body)});
+  async request(path,body,key,method){
+    const res=await fetch(base+path,{method:method??(body===undefined?'GET':'POST'),headers:{'Content-Type':'application/json','Cookie':[...this.cookies].map(([k,v])=>`${k}=${v}`).join('; '),'X-CSRF-TOKEN':this.token,...(key?{'Idempotency-Key':key}:{})},body:body===undefined?undefined:JSON.stringify(body)});
     for(const cookie of res.headers.getSetCookie()){const [kv]=cookie.split(';'); const at=kv.indexOf('=');this.cookies.set(kv.slice(0,at),kv.slice(at+1));}
     const text=await res.text();return {status:res.status,body:text?JSON.parse(text):null,retryAfter:res.headers.get('retry-after')};
   }

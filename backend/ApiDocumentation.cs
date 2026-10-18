@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Linq;
+using ClinicFlow.Controllers;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.OpenApi;
@@ -15,14 +17,13 @@ namespace ClinicFlow
                 options.AddOperationTransformer(
                     (operation, context, ct) =>
                     {
-                        var path = context.Description.RelativePath ?? "";
                         operation.Description =
                             "Same-origin demo session cookie. Errors: 400 invalid request, 401 unauthenticated, 403 role denied, 404 missing object, 409 business conflict. Responses include X-Correlation-ID.";
-                        if (context.Description.HttpMethod == "POST")
+                        if (context.Description.HttpMethod is "POST" or "PUT" or "PATCH" or "DELETE")
                         {
                             if (operation.Parameters == null)
                                 operation.Parameters = new List<IOpenApiParameter>();
-                            // POST 统一补 CSRF 头参数说明（该头由中间件校验，签名里看不到）。
+                            // 写操作统一补 CSRF 头参数说明（该头由中间件校验，签名里看不到）。
                             operation.Parameters.Add(
                                 new OpenApiParameter
                                 {
@@ -34,8 +35,8 @@ namespace ClinicFlow
                                     Schema = new OpenApiSchema { Type = JsonSchemaType.String },
                                 }
                             );
-                            // StartsWith ≈ Java String.startsWith。
-                            if (path.StartsWith("api/ois/commands/"))
+                            // Endpoint metadata keeps documentation independent of route naming.
+                            if (context.Description.ActionDescriptor.EndpointMetadata.OfType<IdempotentAttribute>().Any())
                                 operation.Parameters.Add(
                                     new OpenApiParameter
                                     {

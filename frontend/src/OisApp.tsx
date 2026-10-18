@@ -1,3 +1,4 @@
+import { submitOisForm } from "./ois-api";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Auth from "./Auth";
 import { api, ApiError, refreshCsrf, type User } from "./api";
@@ -104,7 +105,7 @@ export default function OisApp() {
       retry.current = { signature, key: crypto.randomUUID() };
     let committed = false;
     try {
-      await api("/api/ois/commands/" + operation, command, retry.current.key);
+      await submitOisForm(operation, command, retry.current.key);
       committed = true;
       retry.current = null;
       setEditor(null);
@@ -426,7 +427,9 @@ export default function OisApp() {
   function corrections(id: string, version: number) {
     open({
       title: "追加签署记录更正",
-      operation: "correction",
+      operation: data!.plans.some((p) => p.id === id)
+        ? "correct-plan"
+        : "correct-delivery",
       command: { id, version },
       fields: [reason(), text("text", "更正内容")],
       context:
@@ -761,18 +764,34 @@ export default function OisApp() {
                 </article>
               </div>
               <section className="ois-panel" aria-labelledby="operation-guide">
-                <h2 id="operation-guide">{label(role)}操作指引</h2>
-                <div className="ois-guide-grid">
+                <h2 id="operation-guide">{label(role)}操作流程 SOP</h2>
+                <p className="ois-muted">
+                  按以下顺序完成本角色的系统工作；涉及其他角色的步骤，等待交接完成后再继续。
+                </p>
+                <p className="ois-sop-flow">{workspace.workflow}</p>
+                <ul className="ois-sop-notes">
+                  {workspace.notes.map((note) => (
+                    <li key={note}>{note}</li>
+                  ))}
+                </ul>
+                <ol className="ois-guide-grid">
                   {workspace.guide.map((step) => (
-                    <article className="ois-guide-step" key={step.title}>
+                    <li className="ois-guide-step" key={step.title}>
                       <h3>{step.title}</h3>
-                      <p className="ois-muted">{step.text}</p>
+                      <p>
+                        <strong>操作：</strong>
+                        {step.text}
+                      </p>
+                      <p className="ois-muted">
+                        <strong>结果与交接：</strong>
+                        {step.result}
+                      </p>
                       <button onClick={() => setView(step.view)}>
                         {step.action} →
                       </button>
-                    </article>
+                    </li>
                   ))}
-                </div>
+                </ol>
               </section>
               <div className="ois-actions">
                 {scheduler && (

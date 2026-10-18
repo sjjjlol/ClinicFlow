@@ -19,6 +19,7 @@ namespace ClinicFlow.Middleware
             if (
                 HttpMethods.IsPost(ctx.Request.Method)
                 || HttpMethods.IsPut(ctx.Request.Method)
+                || HttpMethods.IsPatch(ctx.Request.Method)
                 || HttpMethods.IsDelete(ctx.Request.Method)
             )
             {

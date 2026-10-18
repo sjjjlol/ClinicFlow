@@ -2,106 +2,54 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using MySqlConnector;
+using ClinicFlow.Ois.Compatibility;
 
 namespace ClinicFlow.Ois
 {
-    public class OisService
+    public sealed class CommandExecutor
     {
         private readonly ClinicDb db;
         private readonly TimeProvider clock;
 
-        public OisService(ClinicDb db, TimeProvider clock)
+        public CommandExecutor(ClinicDb db, TimeProvider clock)
         {
             this.db = db;
             this.clock = clock;
         }
 
-        static readonly JsonSerializerOptions Json = new JsonSerializerOptions(JsonSerializerDefaults.Web) { Converters = { new UtcDateTimeConverter() } };
+        private static readonly JsonSerializerOptions Json = CommandHistory.Json;
 
-        public async Task<OisWorkflow> Load(CancellationToken ct) =>
-            new OisWorkflow()
-            {
-                Drafts = await db.Set<OisDraft>().ToListAsync(ct),
-                Cases = await db.Set<CareCase>().ToListAsync(ct),
-                Prescriptions = await db.Set<Prescription>().ToListAsync(ct),
-                Plans = await db.Set<TreatmentPlan>().ToListAsync(ct),
-                Resources = await db.Set<OisResource>().ToListAsync(ct),
-                Reservations = await db.Set<Reservation>().ToListAsync(ct),
-                Deliveries = await db.Set<TreatmentDelivery>().ToListAsync(ct),
-                Tasks = await db.Set<OisTask>().ToListAsync(ct),
-                Patients = await db.Patients.AsNoTracking().ToListAsync(ct),
-            };
-
-        public async Task<object> Snapshot(string actor, CancellationToken ct)
-        {
-            // Repeatable read keeps all tables and derived release status in one consistent view.
-            await using var tx = await db.Database.BeginTransactionAsync(
-                IsolationLevel.RepeatableRead,
-                ct
-            );
-            var w = await Load(ct);
-            var audits = await db.Set<OisAudit>()
-                .Where(x => x.Action != "save-draft" || x.Actor == actor)
-                .OrderBy(x => x.Id).ToListAsync(ct);
-            var reservations = w
-                .Reservations.Select(r => new
-                {
-                    reservation = r,
-                    blockers = r.Status == "Booked" ? w.Blockers(r) : new List<string>(),
-                })
-                .ToList();
-            await tx.CommitAsync(ct);
-            return new
-            {
-                drafts = w.Drafts.Where(x => x.Actor == actor),
-                w.Cases,
-                w.Prescriptions,
-                w.Plans,
-                w.Resources,
-                reservations,
-                w.Deliveries,
-                w.Tasks,
-                w.Patients,
-                audits,
-            };
-        }
-
-        public async Task<object> Execute(
-            string op,
-            OisCommand command,
+        public async Task<object> Execute<T>(
+            T request,
             string actor,
             string role,
             string key,
             string correlation,
-            CancellationToken ct
-        )
+            CancellationToken ct,
+            Func<OisState, T, string, string, DateTime, string> apply
+        ) where T : class
         {
+            var op = CommandHistory.Operation<T>();
+            var command = CommandHistory.Normalize(request);
             if (string.IsNullOrWhiteSpace(key) || key.Length > 128)
                 throw new BusinessException("invalid_key", "请提供1至128字符的请求标识", 400);
-            foreach (var property in typeof(OisCommand).GetProperties())
+            foreach (var property in typeof(T).GetProperties())
             {
                 if (property.PropertyType != typeof(string))
                     continue;
 
-                string? value = property.GetValue(command) as string;
+                string? value = property.GetValue(request) as string;
                 int maxLength = property.Name == "DraftJson" ? 64000 : 4000;
                 if (value == null || value.Length > maxLength)
                     throw new BusinessException("invalid_input", "文本不能为空值或超过4000字符", 400);
             }
-            var id = Hash(JsonSerializer.Serialize(new[] { "ois", actor, role, key }));
-            // Preserve fingerprints of pre-upgrade requests: absent new fields must not change replay keys.
-            var legacyNames = new HashSet<string> { "id", "version", "patientId", "caseId", "planId", "resourceId", "kind", "startUtc", "endUtc", "text", "diagnosis", "reason", "attachment", "outcome", "failureType", "identityChecked", "available" };
-            var fingerprintCommand = JsonSerializer.SerializeToElement(command, Json).EnumerateObject()
-                .Where(p => legacyNames.Contains(p.Name) || !(p.Value.ValueKind == JsonValueKind.String && p.Value.GetString() == "" || p.Value.ValueKind == JsonValueKind.Number && p.Value.GetDecimal() == 0))
-                .ToDictionary(p => p.Name, p => p.Value);
-            var fingerprint = Hash(JsonSerializer.Serialize(new { op, command = fingerprintCommand }, Json));
+            var id = CommandHistory.Hash(JsonSerializer.Serialize(new[] { "ois", actor, role, key }));
+            var fingerprint = CommandHistory.Fingerprint(op, command);
             await using var tx = await db.Database.BeginTransactionAsync(
                 IsolationLevel.ReadCommitted,
                 ct
@@ -121,7 +69,7 @@ namespace ClinicFlow.Ois
                     await tx.CommitAsync(ct);
                     return JsonSerializer.Deserialize<JsonElement>(prior.Response!);
                 }
-                var w = await Load(ct);
+                var w = await OisStateStore.Load(db, ct);
                 var now = clock.GetUtcNow().UtcDateTime;
                 var before = JsonSerializer.Serialize(
                     w.Cases.Cast<IOisEntity>()
@@ -134,13 +82,10 @@ namespace ClinicFlow.Ois
                         .Select(x => JsonSerializer.SerializeToElement(x, x.GetType(), Json)),
                     Json
                 );
-                var targetId = w.Apply(op, command, actor, role, now);
+                var targetId = apply(w, request, actor, role, now);
                 Track(w.Drafts);
-                if (op == "prescribe" || op == "plan")
-                {
-                    var caseId = op == "prescribe" ? command.Id : command.CaseId;
-                    db.RemoveRange(w.Drafts.Where(x => x.CaseId == caseId && x.Actor == actor && x.Operation == op));
-                }
+                foreach (var entry in db.ChangeTracker.Entries<OisDraft>().ToList())
+                    if (!w.Drafts.Contains(entry.Entity)) db.Remove(entry.Entity);
                 Track(w.Cases);
                 Track(w.Prescriptions);
                 Track(w.Plans);
@@ -208,7 +153,5 @@ namespace ClinicFlow.Ois
                     db.Add(entity);
         }
 
-        static string Hash(string text) =>
-            Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
     }
 }

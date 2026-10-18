@@ -3,6 +3,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using ClinicFlow;
 using ClinicFlow.Ois;
+using ClinicFlow.Ois.Requests;
+using ClinicFlow.Ois.Operations;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -49,8 +51,9 @@ namespace ClinicFlow.Tools
                 command.CommandText = "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name IN ('Appointments','SlotClaims','Tasks','Audits','Resources','Outbox','SyncAttempt','ImagingIdentity','ImagingLink','ImagingAudit')";
                 if (Convert.ToInt32(await command.ExecuteScalarAsync()) != 0) throw new Exception("Obsolete tables survived");
                 // Existing OIS request keys still replay, without duplicating a case or audit.
-                await new OisService(db, TimeProvider.System).Execute("case", new OisCommand { PatientId = 1, Text = "Preserved OIS case" },
-                    "retained-clinician", "Clinician", "upgrade-preserve", "upgrade-drill", default);
+                await new CommandExecutor(db, TimeProvider.System).Execute(new CreateCaseRequest { PatientId = 1, Text = "Preserved OIS case" },
+                    "retained-clinician", "Clinician", "upgrade-preserve", "upgrade-drill", default,
+                    (state, input, actor, role, now) => new CasesOperations(state).CreateCase(input, actor, role, now));
             }
             else if (mode != "verify-old") throw new Exception("prepare | upgrade | verify-old");
             if (await db.Set<CareCase>().CountAsync() != 1

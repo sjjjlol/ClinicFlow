@@ -70,8 +70,8 @@ for (const [role, title, menus, hidden] of [
       await expect(
         page.locator("nav").getByRole("button", { name: menu }),
       ).toHaveCount(0);
-    const guide = page.getByRole("region", { name: title + "操作指引" });
-    await expect(guide.locator("article")).toHaveCount(3);
+    const guide = page.getByRole("region", { name: title + "操作流程 SOP" });
+    await expect(guide.locator(".ois-guide-step")).toHaveCount(5);
     const actions = await guide.getByRole("button").allTextContents();
     for (const action of actions) {
       await guide.getByRole("button", { name: action, exact: true }).click();

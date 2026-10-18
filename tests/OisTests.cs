@@ -12,9 +12,9 @@ namespace ClinicFlow.Tests
     // Complete demo inputs for workflow scenarios; missing-field tests call Apply directly.
     static class VerificationInputs
     {
-        public static OisCommand Complete(string op, OisCommand command)
+        public static ScenarioCommand Complete(string op, ScenarioCommand command)
         {
-            OisCommand input = Copy(command);
+            ScenarioCommand input = Copy(command);
             switch (op)
             {
                 case "prescribe":
@@ -42,9 +42,9 @@ namespace ClinicFlow.Tests
             return input;
         }
 
-        private static OisCommand Copy(OisCommand input)
+        private static ScenarioCommand Copy(ScenarioCommand input)
         {
-            return new OisCommand
+            return new ScenarioCommand
             {
                 Id = input.Id,
                 Version = input.Version,
@@ -88,8 +88,8 @@ namespace ClinicFlow.Tests
     {
         readonly DateTime now = new DateTime(2030, 1, 1, 8, 0, 0, DateTimeKind.Utc);
 
-        OisWorkflow Create() =>
-            new OisWorkflow()
+        OisState Create() =>
+            new OisState()
             {
                 Patients = new List<Patient> { new Patient { Id = 1 }, new Patient { Id = 2 } },
                 Resources = new List<OisResource>
@@ -100,17 +100,17 @@ namespace ClinicFlow.Tests
                 },
             };
 
-        string Run(OisWorkflow w, string op, OisCommand c, string role, DateTime? at = null) =>
+        string Run(OisState w, string op, ScenarioCommand c, string role, DateTime? at = null) =>
             w.Apply(op, VerificationInputs.Complete(op, c), role.ToLowerInvariant(), role, at ?? now);
 
-        (CareCase, TreatmentPlan) Plan(OisWorkflow w)
+        (CareCase, TreatmentPlan) Plan(OisState w)
         {
-            var id = Run(w, "case", new OisCommand { PatientId = 1, Text = "模拟诊疗" }, "Clinician");
+            var id = Run(w, "case", new ScenarioCommand { PatientId = 1, Text = "模拟诊疗" }, "Clinician");
             var care = w.Cases.Single(x => x.Id == id);
             Run(
                 w,
                 "prescribe",
-                new OisCommand
+                new ScenarioCommand
                 {
                     Id = id,
                     Version = care.Version,
@@ -122,7 +122,7 @@ namespace ClinicFlow.Tests
             var planId = Run(
                 w,
                 "plan",
-                new OisCommand
+                new ScenarioCommand
                 {
                     CaseId = id,
                     Version = care.Version,
@@ -135,7 +135,7 @@ namespace ClinicFlow.Tests
         }
 
         Reservation Book(
-            OisWorkflow w,
+            OisState w,
             string kind,
             string resource,
             string care = "",
@@ -147,12 +147,12 @@ namespace ClinicFlow.Tests
             if (kind == "Experiment")
             {
                 var p = w.Plans.Single(x => x.Id == plan);
-                if (p.ReviewedBy is null) Run(w, "review", new OisCommand { Id = p.Id, Version = p.Version }, "Clinician");
+                if (p.ReviewedBy is null) Run(w, "review", new ScenarioCommand { Id = p.Id, Version = p.Version }, "Clinician");
             }
             var id = Run(
                 w,
                 "book",
-                new OisCommand
+                new ScenarioCommand
                 {
                     Kind = kind,
                     ResourceId = resource,
@@ -167,14 +167,14 @@ namespace ClinicFlow.Tests
             return w.Reservations.Single(x => x.Id == id);
         }
 
-        void Release(OisWorkflow w, TreatmentPlan p)
+        void Release(OisState w, TreatmentPlan p)
         {
-            Run(w, "review", new OisCommand { Id = p.Id, Version = p.Version }, "Clinician");
+            Run(w, "review", new ScenarioCommand { Id = p.Id, Version = p.Version }, "Clinician");
             var exp = Book(w, "Experiment", "a", plan: p.Id, hour: 9);
             Run(
                 w,
                 "validate",
-                new OisCommand
+                new ScenarioCommand
                 {
                     Id = exp.Id,
                     Version = exp.Version,
@@ -190,8 +190,8 @@ namespace ClinicFlow.Tests
         public void Missing_clinical_details_and_unreviewed_experiments_are_rejected()
         {
             var w = Create();
-            var id = Run(w, "case", new OisCommand { PatientId = 1, Text = "缺少信息" }, "Clinician");
-            Assert.Throws<BusinessException>(() => w.Apply("prescribe", new OisCommand
+            var id = Run(w, "case", new ScenarioCommand { PatientId = 1, Text = "缺少信息" }, "Clinician");
+            Assert.Throws<BusinessException>(() => w.Apply("prescribe", new ScenarioCommand
             {
                 Id = id,
                 Version = 1,
@@ -200,7 +200,7 @@ namespace ClinicFlow.Tests
             }, "doctor", "Clinician", now));
             Assert.Empty(w.Prescriptions);
             var (_, p) = Plan(w);
-            Assert.Throws<BusinessException>(() => w.Apply("book", new OisCommand
+            Assert.Throws<BusinessException>(() => w.Apply("book", new ScenarioCommand
             {
                 Kind = "Experiment",
                 PlanId = p.Id,
@@ -216,7 +216,7 @@ namespace ClinicFlow.Tests
             var w = Create();
             var (care, p) = Plan(w);
             var exp = Book(w, "Experiment", "a", plan: p.Id, hour: 9);
-            Run(w, "validate", new OisCommand
+            Run(w, "validate", new ScenarioCommand
             {
                 Id = exp.Id,
                 Version = 1,
@@ -226,13 +226,13 @@ namespace ClinicFlow.Tests
             }, "Physicist", now.AddHours(1));
             Assert.Contains(w.Tasks, t => t.TargetId == p.Id && t.Role == "Clinician" && t.Reason.Contains("失败"));
             var task = w.Tasks.Last(t => t.TargetId == p.Id && t.Role == "Physicist");
-            Run(w, "read-task", new OisCommand { Id = task.Id, Version = task.Version }, "Physicist");
+            Run(w, "read-task", new ScenarioCommand { Id = task.Id, Version = task.Version }, "Physicist");
             Assert.Null(task.ResolvedBy);
-            Assert.Throws<BusinessException>(() => Run(w, "resolve-task", new OisCommand { Id = task.Id, Version = task.Version, Text = "已查看" }, "Physicist"));
+            Assert.Throws<BusinessException>(() => Run(w, "resolve-task", new ScenarioCommand { Id = task.Id, Version = task.Version, Text = "已查看" }, "Physicist"));
             var treatment = Book(w, "Treatment", "a", care.Id, hour: 12);
             Assert.NotEmpty(w.Blockers(treatment));
             var retry = Book(w, "Experiment", "a", plan: p.Id, hour: 10);
-            Run(w, "validate", new OisCommand
+            Run(w, "validate", new ScenarioCommand
             {
                 Id = retry.Id,
                 Version = 1,
@@ -243,7 +243,7 @@ namespace ClinicFlow.Tests
             Assert.Equal("Passed", retry.ValidationOutcome);
             Assert.Equal("摆位需调整", exp.ValidationNote);
             Assert.Empty(w.Blockers(treatment));
-            Run(w, "resolve-task", new OisCommand { Id = task.Id, Version = task.Version, Text = "重测通过" }, "Physicist");
+            Run(w, "resolve-task", new ScenarioCommand { Id = task.Id, Version = task.Version, Text = "重测通过" }, "Physicist");
             Assert.NotNull(task.ResolvedBy);
         }
 
@@ -253,7 +253,7 @@ namespace ClinicFlow.Tests
             var w = Create();
             var (care, p) = Plan(w);
             var exp = Book(w, "Experiment", "a", plan: p.Id, hour: 9);
-            Run(w, "validate", new OisCommand
+            Run(w, "validate", new ScenarioCommand
             {
                 Id = exp.Id,
                 Version = 1,
@@ -262,7 +262,7 @@ namespace ClinicFlow.Tests
                 Text = "临床要求需修订",
             }, "Physicist", now.AddHours(1));
             Assert.Throws<BusinessException>(() => Book(w, "Experiment", "a", plan: p.Id, hour: 10));
-            Assert.Throws<BusinessException>(() => Run(w, "plan", new OisCommand
+            Assert.Throws<BusinessException>(() => Run(w, "plan", new ScenarioCommand
             {
                 CaseId = care.Id,
                 Version = care.Version,
@@ -271,9 +271,9 @@ namespace ClinicFlow.Tests
                 Reason = "重做",
             }, "Physicist"));
             var treatment = Book(w, "Treatment", "a", care.Id, hour: 12);
-            Run(w, "terminate", new OisCommand { Id = care.Id, Version = care.Version, Reason = "终止此方案" }, "Clinician");
+            Run(w, "terminate", new ScenarioCommand { Id = care.Id, Version = care.Version, Reason = "终止此方案" }, "Clinician");
             Assert.Contains("诊疗方案已终止", w.Blockers(treatment));
-            Assert.Throws<BusinessException>(() => Run(w, "prescribe", new OisCommand
+            Assert.Throws<BusinessException>(() => Run(w, "prescribe", new ScenarioCommand
             {
                 Id = care.Id,
                 Version = care.Version,
@@ -290,7 +290,7 @@ namespace ClinicFlow.Tests
             var (care, p) = Plan(w);
             Release(w, p);
             var version = care.Version;
-            Run(w, "save-draft", new OisCommand
+            Run(w, "save-draft", new ScenarioCommand
             {
                 CaseId = care.Id,
                 Version = version,
@@ -300,14 +300,14 @@ namespace ClinicFlow.Tests
             var draft = Assert.Single(w.Drafts);
             Assert.Equal(version, care.Version);
             Assert.Equal("Passed", p.Validation);
-            Assert.Throws<BusinessException>(() => Run(w, "save-draft", new OisCommand
+            Assert.Throws<BusinessException>(() => Run(w, "save-draft", new ScenarioCommand
             {
                 CaseId = care.Id,
                 Version = version,
                 Kind = "prescribe",
                 DraftJson = "{}",
             }, "Clinician"));
-            Run(w, "save-draft", new OisCommand
+            Run(w, "save-draft", new ScenarioCommand
             {
                 CaseId = care.Id,
                 Version = version,
@@ -316,7 +316,7 @@ namespace ClinicFlow.Tests
                 DraftVersion = draft.Version,
             }, "Clinician");
             Assert.Equal(2, draft.Version);
-            Run(w, "note", new OisCommand { Id = care.Id, Version = care.Version, Text = "仅补充备注" }, "Clinician");
+            Run(w, "note", new ScenarioCommand { Id = care.Id, Version = care.Version, Text = "仅补充备注" }, "Clinician");
             Assert.Equal("Passed", p.Validation);
         }
 
@@ -331,7 +331,7 @@ namespace ClinicFlow.Tests
             var w = Create();
             var start = now.AddHours(1).AddMinutes(minute);
             Assert.Equal("invalid_time", Assert.Throws<BusinessException>(() => Run(w, "book",
-                new OisCommand
+                new ScenarioCommand
                 {
                     Kind = "Consultation",
                     PatientId = 1,
@@ -353,7 +353,7 @@ namespace ClinicFlow.Tests
                 Run(
                     w,
                     "start",
-                    new OisCommand
+                    new ScenarioCommand
                     {
                         Id = booking.Id,
                         Version = booking.Version,
@@ -369,7 +369,7 @@ namespace ClinicFlow.Tests
             var id = Run(
                 w,
                 "start",
-                new OisCommand
+                new ScenarioCommand
                 {
                     Id = booking.Id,
                     Version = booking.Version,
@@ -383,7 +383,7 @@ namespace ClinicFlow.Tests
             Run(
                 w,
                 "finish",
-                new OisCommand
+                new ScenarioCommand
                 {
                     Id = d.Id,
                     Version = d.Version,
@@ -407,7 +407,7 @@ namespace ClinicFlow.Tests
             var id = Run(
                 w,
                 "start",
-                new OisCommand
+                new ScenarioCommand
                 {
                     Id = booking.Id,
                     Version = booking.Version,
@@ -422,7 +422,7 @@ namespace ClinicFlow.Tests
                 Run(
                     w,
                     "plan",
-                    new OisCommand
+                    new ScenarioCommand
                     {
                         CaseId = care.Id,
                         Version = care.Version,
@@ -436,7 +436,7 @@ namespace ClinicFlow.Tests
             Run(
                 w,
                 "finish",
-                new OisCommand
+                new ScenarioCommand
                 {
                     Id = d.Id,
                     Version = d.Version,
@@ -448,7 +448,7 @@ namespace ClinicFlow.Tests
             Run(
                 w,
                 "plan",
-                new OisCommand
+                new ScenarioCommand
                 {
                     CaseId = care.Id,
                     Version = care.Version,
@@ -463,7 +463,7 @@ namespace ClinicFlow.Tests
             Assert.Equal(old.Id, d.PlanId);
             Assert.Equal("Passed", old.Validation);
             Assert.Throws<BusinessException>(() =>
-                Run(w, "review", new OisCommand { Id = old.Id, Version = old.Version }, "Clinician")
+                Run(w, "review", new ScenarioCommand { Id = old.Id, Version = old.Version }, "Clinician")
             );
         }
 
@@ -500,7 +500,7 @@ namespace ClinicFlow.Tests
             Run(
                 w,
                 "validate",
-                new OisCommand
+                new ScenarioCommand
                 {
                     Id = exp.Id,
                     Version = exp.Version,
@@ -527,7 +527,7 @@ namespace ClinicFlow.Tests
             Run(
                 w,
                 "validate",
-                new OisCommand
+                new ScenarioCommand
                 {
                     Id = exp.Id,
                     Version = exp.Version,
@@ -543,7 +543,7 @@ namespace ClinicFlow.Tests
             Run(
                 w,
                 "machine",
-                new OisCommand
+                new ScenarioCommand
                 {
                     Id = m.Id,
                     Version = m.Version,
@@ -561,7 +561,7 @@ namespace ClinicFlow.Tests
         {
             var w = Create();
             var r = Book(w, "Consultation", "clinician");
-            Run(w, "cancel", new OisCommand { Id = r.Id, Version = r.Version, Reason = "误操作" }, "Scheduler");
+            Run(w, "cancel", new ScenarioCommand { Id = r.Id, Version = r.Version, Reason = "误操作" }, "Scheduler");
             Book(w, "Consultation", "clinician", patient: 2);
             Assert.Equal(
                 "slot_conflict",
@@ -570,7 +570,7 @@ namespace ClinicFlow.Tests
                         Run(
                             w,
                             "restore",
-                            new OisCommand { Id = r.Id, Version = r.Version, Reason = "恢复" },
+                            new ScenarioCommand { Id = r.Id, Version = r.Version, Reason = "恢复" },
                             "Scheduler"
                         )
                     )
@@ -581,7 +581,7 @@ namespace ClinicFlow.Tests
                 "version_conflict",
                 Assert
                     .Throws<BusinessException>(() =>
-                        Run(w, "restore", new OisCommand { Id = r.Id, Version = 1, Reason = "恢复" }, "Scheduler")
+                        Run(w, "restore", new ScenarioCommand { Id = r.Id, Version = 1, Reason = "恢复" }, "Scheduler")
                     )
                     .Code
             );
@@ -600,7 +600,7 @@ namespace ClinicFlow.Tests
                         Run(
                             w,
                             "validate",
-                            new OisCommand
+                            new ScenarioCommand
                             {
                                 Id = exp.Id,
                                 Version = exp.Version,
@@ -624,7 +624,7 @@ namespace ClinicFlow.Tests
             var id = Run(
                 w,
                 "start",
-                new OisCommand
+                new ScenarioCommand
                 {
                     Id = r.Id,
                     Version = r.Version,
@@ -638,7 +638,7 @@ namespace ClinicFlow.Tests
             Run(
                 w,
                 "finish",
-                new OisCommand
+                new ScenarioCommand
                 {
                     Id = d.Id,
                     Version = d.Version,
@@ -653,7 +653,7 @@ namespace ClinicFlow.Tests
                 Run(
                     w,
                     "finish",
-                    new OisCommand
+                    new ScenarioCommand
                     {
                         Id = d.Id,
                         Version = d.Version,
@@ -671,7 +671,7 @@ namespace ClinicFlow.Tests
             var w = Create();
             var (_, p) = Plan(w);
             var old = Book(w, "Experiment", "a", plan: p.Id, hour: 9);
-            Run(w, "cancel", new OisCommand { Id = old.Id, Version = old.Version, Reason = "改排" }, "Clinician");
+            Run(w, "cancel", new ScenarioCommand { Id = old.Id, Version = old.Version, Reason = "改排" }, "Clinician");
             Book(w, "Experiment", "a", plan: p.Id, hour: 11);
             Assert.Equal(
                 "duplicate_experiment",
@@ -680,7 +680,7 @@ namespace ClinicFlow.Tests
                         Run(
                             w,
                             "restore",
-                            new OisCommand { Id = old.Id, Version = old.Version, Reason = "恢复" },
+                            new ScenarioCommand { Id = old.Id, Version = old.Version, Reason = "恢复" },
                             "Clinician"
                         )
                     )
@@ -697,10 +697,10 @@ namespace ClinicFlow.Tests
 
         public Task DisposeAsync() => Task.CompletedTask;
 
-        async Task<object> Send(string op, OisCommand c, string role = "Scheduler", string? key = null)
+        async Task<object> Send(string op, ScenarioCommand c, string role = "Scheduler", string? key = null)
         {
             await using var db = fixture.Db();
-            return await new OisService(db, TimeProvider.System).Execute(
+            return await new CommandExecutor(db, TimeProvider.System).Execute(
                 op,
                 c,
                 role.ToLowerInvariant(),
@@ -711,8 +711,8 @@ namespace ClinicFlow.Tests
             );
         }
 
-        OisCommand Booking() =>
-            new OisCommand
+        ScenarioCommand Booking() =>
+            new ScenarioCommand
             {
                 PatientId = 1,
                 Kind = "Consultation",
@@ -744,10 +744,10 @@ namespace ClinicFlow.Tests
         public async Task Persisted_failure_revision_release_and_interruption_close_the_loop()
         {
             var clock = new Clock();
-            async Task<string> Act(string op, OisCommand input, string role)
+            async Task<string> Act(string op, ScenarioCommand input, string role)
             {
                 await using var db = fixture.Db();
-                var result = await new OisService(db, clock).Execute(
+                var result = await new CommandExecutor(db, clock).Execute(
                     op,
                     VerificationInputs.Complete(op, input),
                     role.ToLowerInvariant(),
@@ -761,10 +761,10 @@ namespace ClinicFlow.Tests
                     .GetProperty("targetId")
                     .GetString()!;
             }
-            var care = await Act("case", new OisCommand { PatientId = 1, Text = "闭环" }, "Clinician");
+            var care = await Act("case", new ScenarioCommand { PatientId = 1, Text = "闭环" }, "Clinician");
             await Act(
                 "prescribe",
-                new OisCommand
+                new ScenarioCommand
                 {
                     Id = care,
                     Version = 1,
@@ -775,7 +775,7 @@ namespace ClinicFlow.Tests
             );
             var p1 = await Act(
                 "plan",
-                new OisCommand
+                new ScenarioCommand
                 {
                     CaseId = care,
                     Version = 2,
@@ -784,10 +784,10 @@ namespace ClinicFlow.Tests
                 },
                 "Physicist"
             );
-            await Act("review", new OisCommand { Id = p1, Version = 1 }, "Clinician");
+            await Act("review", new ScenarioCommand { Id = p1, Version = 1 }, "Clinician");
             var exp1 = await Act(
                 "book",
-                new OisCommand
+                new ScenarioCommand
                 {
                     Kind = "Experiment",
                     PlanId = p1,
@@ -799,7 +799,7 @@ namespace ClinicFlow.Tests
             );
             var treatment = await Act(
                 "book",
-                new OisCommand
+                new ScenarioCommand
                 {
                     Kind = "Treatment",
                     PatientId = 1,
@@ -813,7 +813,7 @@ namespace ClinicFlow.Tests
             clock.Now = clock.Now.AddHours(1);
             await Act(
                 "validate",
-                new OisCommand
+                new ScenarioCommand
                 {
                     Id = exp1,
                     Version = 1,
@@ -825,7 +825,7 @@ namespace ClinicFlow.Tests
             );
             var p2 = await Act(
                 "plan",
-                new OisCommand
+                new ScenarioCommand
                 {
                     CaseId = care,
                     Version = 3,
@@ -835,10 +835,10 @@ namespace ClinicFlow.Tests
                 },
                 "Physicist"
             );
-            await Act("review", new OisCommand { Id = p2, Version = 1 }, "Clinician");
+            await Act("review", new ScenarioCommand { Id = p2, Version = 1 }, "Clinician");
             var exp2 = await Act(
                 "book",
-                new OisCommand
+                new ScenarioCommand
                 {
                     Kind = "Experiment",
                     PlanId = p2,
@@ -851,7 +851,7 @@ namespace ClinicFlow.Tests
             clock.Now = clock.Now.AddMinutes(15);
             await Act(
                 "validate",
-                new OisCommand
+                new ScenarioCommand
                 {
                     Id = exp2,
                     Version = 1,
@@ -867,7 +867,7 @@ namespace ClinicFlow.Tests
                     await Assert.ThrowsAsync<BusinessException>(() =>
                         Act(
                             "start",
-                            new OisCommand
+                            new ScenarioCommand
                             {
                                 Id = treatment,
                                 Version = 1,
@@ -881,7 +881,7 @@ namespace ClinicFlow.Tests
             );
             var delivery = await Act(
                 "start",
-                new OisCommand
+                new ScenarioCommand
                 {
                     Id = treatment,
                     Version = 1,
@@ -892,7 +892,7 @@ namespace ClinicFlow.Tests
             );
             await Act(
                 "finish",
-                new OisCommand
+                new ScenarioCommand
                 {
                     Id = delivery,
                     Version = 1,
@@ -939,9 +939,9 @@ namespace ClinicFlow.Tests
             Assert.Equal(1, await db.Set<OisAudit>().CountAsync());
         }
 
-        private OisCommand ChangedBooking()
+        private ScenarioCommand ChangedBooking()
         {
-            OisCommand command = Booking();
+            ScenarioCommand command = Booking();
             command.PatientId = 2;
             return command;
         }
@@ -973,12 +973,12 @@ namespace ClinicFlow.Tests
             await using var db = fixture.Db();
             var r = await db.Set<Reservation>().SingleAsync();
             await Assert.ThrowsAsync<BusinessException>(() =>
-                Send("cancel", new OisCommand { Id = r.Id, Version = r.Version, Reason = "禁止" }, "Physicist")
+                Send("cancel", new ScenarioCommand { Id = r.Id, Version = r.Version, Reason = "禁止" }, "Physicist")
             );
             await Assert.ThrowsAsync<BusinessException>(() =>
                 Send(
                     "reschedule",
-                    new OisCommand
+                    new ScenarioCommand
                     {
                         Id = r.Id,
                         Version = r.Version,

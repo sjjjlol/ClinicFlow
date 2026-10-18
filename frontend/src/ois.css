@@ -594,7 +594,9 @@
 
 .ois-guide-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: 1fr;
+  list-style: none;
+  padding: 0;
   gap: 16px;
 }
 .ois-guide-step {
@@ -611,4 +613,16 @@
 .ois-guide-step p {
   flex: 1;
   line-height: 1.7;
+}
+
+.ois-sop-flow {
+  padding: 16px;
+  background: #f0f6f6;
+  border-radius: 8px;
+  line-height: 1.8;
+  font-weight: 600;
+}
+.ois-sop-notes {
+  padding-left: 22px;
+  line-height: 1.8;
 }

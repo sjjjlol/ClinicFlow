@@ -327,7 +327,7 @@ DbContext 作用域、DbContext 池和数据库连接池是三个概念。AddDbC
 
 ## 6. 完整 CRUD 入口：先跑通，再拆业务服务
 
-将学习工程按下面的 Program 和 Controller 组织。所需模型来自第 4 节。运行时使用 .NET 10，语法上限仍为 C# 9；入口采用顶层语句，API 采用 Controller。该局部持久化例子在 Controller 中直接操作 DbContext；回到 ClinicFlow 时，业务写操作仍应走 OisService 的事务、规则、审计与幂等边界。
+将学习工程按下面的 Program 和 Controller 组织。所需模型来自第 4 节。运行时使用 .NET 10，语法上限仍为 C# 9；入口采用顶层语句，API 采用 Controller。该局部持久化例子在 Controller 中直接操作 DbContext；回到 ClinicFlow 时，业务写操作仍应走 CommandExecutor 的事务、规则、审计与幂等边界。
 
 `Program.cs`：
 
@@ -808,8 +808,8 @@ EF 可通过标准 ILogger 管道记录日志；本例不默认启用敏感参�
 | Reservation：(ResourceId, StartUtc) 等索引 | 支持资源/患者维度的预约查找 | 普通索引不保证时段不重叠 |
 | TreatmentDelivery：ReservationId 唯一索引 | 同一预约的执行记录唯一 | 用约束配合业务幂等与状态规则 |
 | HasOne<T>().WithMany() + Restrict | 即使无导航属性也配置外键及删除行为 | 无导航不代表无数据库关系 |
-| OisService.Load | 加载实体和只读患者列表 | 大部分 OIS 对象需要跟踪，供规则变更后保存 |
-| OisService.Track | 将规则中新建的 Detached 对象 Add 进上下文 | 已查询的跟踪对象无需再次 Add |
+| OisStateStore.Load | 加载实体和只读患者列表 | 大部分 OIS 对象需要跟踪，供规则变更后保存 |
+| CommandExecutor.Track | 将规则中新建的 Detached 对象 Add 进上下文 | 已查询的跟踪对象无需再次 Add |
 | OisGate + SELECT FOR UPDATE | 多个 API 进程也通过数据库串行获取写锁 | 它是演示范围的串行写入设计，不是 EF 通用默认机制 |
 | SaveChanges + Commit | 业务、审计、幂等记录一起提交 | 不能拆成分别提交的“先业务后审计” |
 | Program.cs：MigrateAsync / Identity.Seed | 演示启动时应用迁移及初始化账号 | 生产升级和多副本需独立设计 |

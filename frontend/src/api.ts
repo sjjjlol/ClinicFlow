@@ -15,10 +15,11 @@ export async function api<T>(
   url: string,
   body?: unknown,
   key?: string,
+  method?: "POST" | "PUT" | "PATCH" | "DELETE",
 ): Promise<T> {
   if (body !== undefined && !csrf) await refreshCsrf();
   const res = await fetch(url, {
-    method: body === undefined ? "GET" : "POST",
+    method: method ?? (body === undefined ? "GET" : "POST"),
     headers: {
       "Content-Type": "application/json",
       "X-CSRF-TOKEN": csrf,

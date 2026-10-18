@@ -14,6 +14,8 @@
 
 ## 文档
 
+- [ASP.NET Core 入门（面向 Java 开发者，按项目开发顺序）](docs/aspnet-core-learning.md)
+- [EF Core 实战（配置、映射、迁移与完整 CRUD 示例）](docs/ef-core-learning.md)
 - [产品范围](docs/ois-mvp.md)
 - [运行与验证](docs/runbook.md)
 - [操作与 API](docs/ois-runbook.md)

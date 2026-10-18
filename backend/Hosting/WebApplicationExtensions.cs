@@ -6,7 +6,7 @@ namespace ClinicFlow.Hosting
 {
     public static class WebApplicationExtensions
     {
-        public static WebApplication UseClinicPipeline(this WebApplication app)
+        public static WebApplication UseClinicMiddleware(this WebApplication app)
         {
             app.UseMiddleware<ResponseHeadersMiddleware>();
             app.UseMiddleware<ApiExceptionMiddleware>();
@@ -17,6 +17,11 @@ namespace ClinicFlow.Hosting
             app.UseAuthorization();
             app.UseRateLimiter();
             app.UseMiddleware<CsrfMiddleware>();
+            return app;
+        }
+
+        public static WebApplication MapClinicEndpoints(this WebApplication app)
+        {
             app.MapControllers();
             app.MapOpenApi("/api/openapi/{documentName}.json").RequireAuthorization("ois");
             app.MapFallbackToFile("/", "index.html");

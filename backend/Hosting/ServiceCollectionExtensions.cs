@@ -20,6 +20,23 @@ namespace ClinicFlow.Hosting
             IConfiguration configuration,
             IHostEnvironment environment)
         {
+            services.AddClinicPersistence(configuration);
+            services.AddClinicAuthentication(environment);
+            services.AddClinicHttp();
+            services.AddClinicOis();
+            return services;
+        }
+
+        public static IServiceCollection AddClinicOis(this IServiceCollection services)
+        {
+            services.AddScoped<CommandExecutor>();
+            services.AddScoped<WorkspaceQuery>();
+            services.AddSingleton(TimeProvider.System);
+            return services;
+        }
+
+        private static IServiceCollection AddClinicPersistence(this IServiceCollection services, IConfiguration configuration)
+        {
             // ---- DI 注册区（对照 Spring 的 @Bean 定义；ASP.NET Core 用内置容器，全部显式代码注册，无包扫描）----
             // AddDbContext：注册 EF Core 的 DbContext 为 Scoped（每请求一个实例，≈ JPA 的 EntityManager 生命周期）。
             services.AddDbContext<ClinicDb>(o =>
@@ -31,6 +48,11 @@ namespace ClinicFlow.Hosting
                 )
             );
 
+            return services;
+        }
+
+        private static IServiceCollection AddClinicAuthentication(this IServiceCollection services, IHostEnvironment environment)
+        {
             // Cookie 认证方案（≈ Spring Security 的 session cookie 认证）。
             services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
                 .AddCookie(o =>
@@ -69,6 +91,11 @@ namespace ClinicFlow.Hosting
             services.AddAuthorizationBuilder()
                 .AddPolicy("ois", p => p.RequireRole("Scheduler", "Clinician", "Physicist"));
 
+            return services;
+        }
+
+        private static IServiceCollection AddClinicHttp(this IServiceCollection services)
+        {
             // CSRF 防护：Cookie 会话必需；约定前端在 X-CSRF-TOKEN 头回传令牌。
             services.AddAntiforgery(o => o.HeaderName = "X-CSRF-TOKEN");
 
@@ -123,8 +150,6 @@ namespace ClinicFlow.Hosting
                 });
             services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new UtcDateTimeConverter()));
 
-            services.AddScoped<OisService>();
-            services.AddSingleton(TimeProvider.System);
             services.AddClinicOpenApi();
             return services;
         }

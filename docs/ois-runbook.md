@@ -10,25 +10,36 @@ OIS 使用领域表及草稿表及患者、用户和幂等记录表；[数据库
 
 GET `/api/ois/workspace`：一致性快照，含档案、处方、计划、资源、预约及其放行阻碍、执行、待办、患者和审计。
 
-POST `/api/ois/commands/{operation}`（这里的 `{operation}` 表示下表中的固定操作名称，每个操作对应独立 Controller Action；OpenAPI 分别列出实际路径）：Cookie 身份认证、CSRF 头和 `Idempotency-Key` 必需。多数修改需要 `id` 与目标记录当前 `version`；`prescribe` 使用档案 id/version，`plan` 使用 `caseId` 和档案 version。客户端不得自行指定操作者。
+资源写接口需要 Cookie、`X-CSRF-TOKEN` 和 `Idempotency-Key`。目标 ID 放在路径中，正文不接受覆盖目标；`version` 是目标当前版本，签署处方和登记计划使用档案版本，实验结果使用预约版本。操作者来自会话。旧 `/api/ois/commands/*` 返回 404。
 
-|操作|角色|主要字段|
+|接口|角色|请求正文字段|
 |---|---|---|
-|case|诊疗|patientId, text|
-|prescribe|诊疗|id, version, diagnosis, text, reason（修订必填）|
-|plan|物理|caseId, version, resourceId, text, attachment, reason（修订必填）|
-|review|诊疗|id, version|
-|book|门诊/治疗：预约；实验：诊疗；维护：物理|kind, resourceId, startUtc, endUtc；患者预约带 patientId；治疗带 caseId；实验带 planId|
-|reschedule|对应活动负责人|id, version, resourceId, startUtc, endUtc, reason|
-|cancel / restore / no-show|对应活动负责人|id, version, reason|
-|validate|物理|实验预约 id, version, outcome=Passed/Failed, text, failureType=Plan/Clinical/Equipment|
-|machine|物理|id, version, available, reason|
-|consult|诊疗|门诊 id, version, caseId|
-|start|诊疗|治疗预约 id, version, planId（核对的当前版本）, identityChecked=true|
-|finish|诊疗|执行记录 id, version, outcome=Completed/Interrupted, text|
-|not-executed|诊疗|治疗预约 id, version, reason|
-|read-task / resolve-task|待办责任角色|id, version；处理须 text|
-|correction|计划验证：物理；处方/执行：诊疗|id, version, text, reason|
+|POST `/api/ois/cases`|诊疗|patientId, text|
+|POST `/api/ois/cases/{id}/terminate`|诊疗|version, reason|
+|POST `/api/ois/cases/{id}/notes`|诊疗|version, text|
+|POST `/api/ois/cases/{id}/prescriptions`|诊疗|version, diagnosis, text, reason, treatmentSite, totalDoseGy, fractionDoseGy, fractions, treatmentMaterials|
+|POST `/api/ois/cases/{id}/plans`|物理|version, resourceId, text, reason, attachment, verificationMethod, equipment, measurementConditions, expectedValues, standardName, standardVersion, acceptanceCriteria, allowedDeviation|
+|POST `/api/ois/plans/{id}/review`|诊疗|version|
+|POST `/api/ois/reservations/{id}/reschedule`|活动负责人|version, resourceId, startUtc, endUtc, reason|
+|POST `/api/ois/reservations/{id}/restore`|活动负责人|version, reason|
+|POST `/api/ois/reservations/{id}/cancel`|活动负责人|version, reason|
+|POST `/api/ois/reservations/{id}/no-show`|活动负责人|version, reason|
+|POST `/api/ois/reservations/{id}/experiment-results`|物理|version, outcome, text, failureType, measuredValues, resultAttachment|
+|POST `/api/ois/reservations/{id}/complete-consultation`|诊疗|version, caseId|
+|POST `/api/ois/reservations/{id}/start-treatment`|诊疗|version, planId, identityChecked|
+|POST `/api/ois/treatment-deliveries/{id}/finish`|诊疗|version, outcome, text|
+|POST `/api/ois/reservations/{id}/not-executed`|诊疗|version, reason|
+|PUT `/api/ois/machines/{id}/availability`|物理|version, available, reason|
+|POST `/api/ois/tasks/{id}/read`|待办责任角色|version|
+|POST `/api/ois/tasks/{id}/resolve`|待办责任角色|version, text|
+|POST `/api/ois/reservations/consultation`|预约|resourceId, startUtc, endUtc, reason, patientId, caseId|
+|POST `/api/ois/reservations/treatment`|预约|resourceId, startUtc, endUtc, reason, patientId, caseId|
+|POST `/api/ois/reservations/experiment`|诊疗|resourceId, startUtc, endUtc, reason, planId|
+|POST `/api/ois/reservations/maintenance`|物理|resourceId, startUtc, endUtc, reason|
+|PUT `/api/ois/cases/{id}/prescription-draft`|诊疗|version, draftJson, draftVersion|
+|PUT `/api/ois/cases/{id}/plan-draft`|物理|version, draftJson, draftVersion|
+|POST `/api/ois/plans/{id}/corrections`|物理|version, text, reason|
+|POST `/api/ois/treatment-deliveries/{id}/corrections`|诊疗|version, text, reason|
 
 成功命令返回 `{ "targetId": "..." }`，客户端随后重读 workspace。幂等键按 `ois + actor + role + key` 隔离，指纹包含操作和请求内容；同一操作者不可将同一 key 用于另一操作或修改后的内容。回放返回原 targetId，不返回最新快照。
 
@@ -59,8 +70,10 @@ POST `/api/ois/commands/{operation}`（这里的 `{operation}` 表示下表中�
 
 所有失败都通知诊疗人员；物理问题另派物理师待办。临床失败必须先修订处方或终止，不能通过登记同处方的新计划绕过。待办已读不等于已解决：物理问题须重测通过，临床问题须修订处方或终止，才能记录解决结果。物理师签署通过后不增加重复审批，其他治疗条件仍须满足。
 
-`save-draft` 保存不完整处方或计划：`caseId`、档案 `version`、`kind=prescribe/plan`、`draftJson`（表单值对象）、`draftVersion`（新建为 0）。草稿按账号和档案隔离，覆盖检查版本，成功提交后删除对应草稿。恢复草稿时若关联版本发生变化，界面提示重新核对；草稿不改变当前签署和放行状态。
+`PUT /api/ois/cases/{id}/prescription-draft` 或 `plan-draft` 保存不完整处方或计划：档案 `version`、`draftJson`（表单值对象的 JSON 字符串）、`draftVersion`（新建为 0）。草稿按账号和档案隔离，覆盖检查版本，成功提交后删除对应草稿。恢复草稿时若关联版本发生变化，界面提示重新核对；草稿不改变当前签署和放行状态。
 
-诊疗人员可用 `note`（`id/version/text`）追加备注，不改变已签署版本；`terminate`（`id/version/reason`）终止档案并阻断后续治疗，已有历史保留。活动治疗期间不能终止。
+诊疗人员可用 `POST /api/ois/cases/{id}/notes`（`version/text`）追加备注，不改变已签署版本；`POST /api/ois/cases/{id}/terminate`（`version/reason`）终止档案并阻断后续治疗，已有历史保留。活动治疗期间不能终止。
 
 升级保留历史记录；缺少结构化字段的旧方案不会被自动补造数据，须签署完整新处方和计划后重新验证，才能继续治疗。
+
+跨升级重放保留历史操作名称和规范化指纹，不需要保留旧 URL。新请求对应相同业务输入时返回历史 targetId，不再执行领域变更。处方更正通过签署新版实现；计划验证更正和治疗记录更正分别归属其资源接口。

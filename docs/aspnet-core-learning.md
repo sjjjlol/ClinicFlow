@@ -27,11 +27,11 @@
 ClinicFlow 的一次写操作可沿下面的路径阅读：
 
 ```text
-HTTP POST /api/ois/commands/{operation}
+HTTP POST /api/ois/reservations/treatment
   → 认证、授权、CSRF 校验
-  → OisController：绑定输入，提取当前用户
-  → OisService.Execute：事务、锁、幂等、加载数据
-  → OisWorkflow.Apply：校验规则并改变状态
+  → ReservationsController：绑定专用请求，提取当前用户
+  → CommandExecutor.Execute：事务、锁、幂等、加载数据
+  → 对应 Operations 方法：校验规则并改变状态
   → EF Core SaveChangesAsync + CommitAsync
   → HTTP JSON 响应
 ```
@@ -155,11 +155,11 @@ public class CreatePatientRequest
 | `value ?? fallback` | 左侧为 null 时取右侧 |
 | `user?.Id` | user 为 null 时结果为 null |
 | `new Patient { Name = "模拟患者" }` | 对象初始化器，设置属性 |
-| `new OisCommand { Id = id, Version = 1 }` | 显式类型和对象初始化器 |
+| `new ReviewPlanRequest { Id = id, Version = 1 }` | 显式类型和对象初始化器 |
 | `new List<string> { "a", "b" }` | 显式创建并初始化集合 |
 | `namespace ClinicFlow { ... }` | 块命名空间；目录结构不强制决定命名空间 |
 | `this IServiceCollection services` | 静态扩展方法参数，例如 `services.AddClinicOpenApi()` |
-| `public OisService(ClinicDb db, TimeProvider clock) { ... }` | 普通构造函数，DI 通过参数提供依赖 |
+| `public CommandExecutor(ClinicDb db, TimeProvider clock) { ... }` | 普通构造函数，DI 通过参数提供依赖 |
 
 `using ClinicFlow;` 类似 import；`using var scope = ...` 则是资源管理，类似 try-with-resources。`await using` 对应异步释放，例如数据库事务。
 
@@ -195,13 +195,14 @@ var patients = await db.Patients
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddClinicServices(builder.Configuration, builder.Environment);
-var app = builder.Build();
-// 在独立作用域中应用迁移、初始化演示账号。
-app.UseClinicPipeline();
+await using var app = builder.Build();
+await app.InitializeClinicDatabaseAsync();
+app.UseClinicMiddleware();
+app.MapClinicEndpoints();
 await app.RunAsync();
 ```
 
-`Hosting/ServiceCollectionExtensions.cs` 的 AddClinicServices 在 Build 前注册依赖；`Hosting/WebApplicationExtensions.cs` 的 UseClinicPipeline 装配中间件，调用 MapControllers 映射 Controller。Controller 继续用特性声明接口，精简宿主与 Minimal API 是两个独立选择。
+`Hosting/ServiceCollectionExtensions.cs` 的 AddClinicServices 在 Build 前注册依赖；`Hosting/WebApplicationExtensions.cs` 的 UseClinicMiddleware 装配中间件，MapClinicEndpoints 调用 MapControllers 映射 Controller。Controller 继续用特性声明接口，精简宿主与 Minimal API 是两个独立选择。
 
 `Add…` 通常表示注册能力，`Use…` 通常表示加入请求管道，`Map…` 通常表示映射端点。注册认证服务之后，还需要认证中间件和授权规则。运行时仍为 .NET 10，语言上限仍为 C# 9。
 
@@ -281,7 +282,7 @@ services.AddScoped<BookingWindow>();
 | `AddScoped<T>()` | 每个作用域一个实例；HTTP 中通常每请求一个 | DbContext、需要它的业务服务 |
 | `AddSingleton<T>()` | 根容器存续期间共享一个实例 | 线程安全的共享服务 |
 
-Spring Bean 默认通常是 singleton；不要把这个习惯直接套到有 DbContext 的服务上。本项目的 `AddDbContext<ClinicDb>` 默认注册 Scoped，`OisService` 也是 Scoped，`TimeProvider.System` 作为 Singleton 注册。
+Spring Bean 默认通常是 singleton；不要把这个习惯直接套到有 DbContext 的服务上。本项目的 `AddDbContext<ClinicDb>` 默认注册 Scoped，`CommandExecutor` 也是 Scoped，`TimeProvider.System` 作为 Singleton 注册。
 
 Singleton 不能直接持有 Scoped 服务，否则会让请求状态跨请求存活。启动任务或后台服务需要访问数据库时，显式创建作用域；本项目启动迁移使用 `app.Services.CreateScope()`。一般业务类优先构造器注入，而不是到处调用 `GetRequiredService`。生命周期与作用域规则见 [官方 DI 文档](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/dependency-injection?view=aspnetcore-10.0)。
 
@@ -303,7 +304,7 @@ public class GreetingService : IGreetingService
 
 在 AddClinicServices 中调用 `services.AddScoped<IGreetingService, GreetingService>()`，Controller 构造函数即可接收 `IGreetingService service`，在 Action 中调用 `service.Greet(input.Name)`。这是“注册抽象到实现 → 容器创建对象 → 构造函数请求依赖”的完整过程；直接注入未注册的接口会失败。
 
-业务类同样可以通过构造器接收依赖。容器解析 OisService 时，会继续解析它的 ClinicDb 和 TimeProvider 参数。排查“Unable to resolve service”时，沿构造参数逐个检查注册，不要只看最外层服务。
+业务类同样可以通过构造器接收依赖。容器解析 CommandExecutor 时，会继续解析它的 ClinicDb 和 TimeProvider 参数。排查“Unable to resolve service”时，沿构造参数逐个检查注册，不要只看最外层服务。
 
 ## 5. 数据库：先定义模型与约束，再生成迁移
 
@@ -338,9 +339,9 @@ public class GreetingService : IGreetingService
 
 ### 6.1 规则与 I/O 分开
 
-`OisWorkflow.Apply` 根据当前状态、命令、角色和传入时间决定能否执行。它不负责打开数据库事务，也不自己访问系统时钟，因此能直接构造数据做规则测试。
+`对应 Operations 方法` 根据当前状态、命令、角色和传入时间决定能否执行。它不负责打开数据库事务，也不自己访问系统时钟，因此能直接构造数据做规则测试。
 
-`OisService.Execute` 负责加载数据、调用规则、保存审计和幂等结果。时间通过注入的 `TimeProvider` 获取，再传给规则层。这与 Spring 中应用服务协调领域对象的思路相近。
+`CommandExecutor.Execute` 负责加载数据、调用规则、保存审计和幂等结果。时间通过注入的 `TimeProvider` 获取，再传给规则层。这与 Spring 中应用服务协调领域对象的思路相近。
 
 ### 6.2 不要寻找必须存在的 @Transactional
 
@@ -364,13 +365,14 @@ EF Core 对支持事务的 Provider，单次 `SaveChanges` 默认在事务内完
 
 ### 7.1 本项目的参数从哪里来
 
-在 `Controllers/OisController.cs` 中，类上声明 `[Route("api/ois")]`，Book 方法声明 `[HttpPost("commands/book")]`，Prescribe 等操作也有各自的 Action。已支持的 URL 保持不变：
+在 `Controllers/ReservationsController.cs` 中，基础类声明 `[Route("api/ois")]`，BookTreatment 方法声明 `[HttpPost("reservations/treatment")]`。各资源拥有独立 Controller 和专用请求类型：
 
 | 参数或依赖 | 来源 |
 | --- | --- |
-| 操作名称 | 由 Action 固定，例如 Book 传入 `"book"`，不接受客户端任意分发 |
-| `[FromBody] OisCommand input` | POST JSON 请求体 |
-| `OisService service` | Controller 构造函数注入 |
+| 业务方法 | Action 直接选择对应 Operations 方法，不按字符串分发 |
+| `string id` | 路由目标 ID；正文不能覆盖 |
+| `[FromBody] BookTreatmentRequest input` | POST JSON 请求体 |
+| `CommandExecutor service` | Controller 构造函数注入 |
 | `HttpContext`、`User`、`Request` | ControllerBase 提供的当前请求属性 |
 | `CancellationToken ct` | 当前请求的取消信号 |
 | `Idempotency-Key` | 通过 `Request.Headers` 读取，交由 Service 校验 |
@@ -421,7 +423,7 @@ public class GreetingRequest
 
 `[ApiController]`、`[HttpPost]` 类似 Spring MVC 的类/方法注解。继承 ControllerBase 提供 Ok、Unauthorized、NoContent、BadRequest、NotFound 等方法；返回 IActionResult 或 Task<IActionResult> 表达 HTTP 响应。依赖通过构造函数注入，业务逻辑委托给 Service。
 
-本项目按认证、OIS、健康查询和回退拆分 Controller。请求 DTO 放在 Contracts 或对应业务模块；现有 OisCommand 为普通 DTO 类，保留在 OIS 模块。21 个命令各有 Action，业务调用由私有 ExecuteCommand 复用；OpenAPI 列出每个实际路径。继续新增接口时应遵守同样边界。
+本项目按业务资源拆分 Controller，工作台查询单独保留。请求类型位于 Ois/Requests；每个 Action 直接调用明确业务方法，CommandExecutor 共用事务、幂等和审计。历史格式只保留在 Compatibility 内。继续新增接口时应遵守同样职责划分。
 
 ### 7.4 绑定、校验、业务规则分开理解
 
@@ -460,7 +462,7 @@ app.Use(async (context, next) =>
 
 理解为包裹式调用：A 进入 → B 进入 → 端点 → B 返回 → A 返回。不调用 next 会短路。异常处理要放在希望捕获的下游之前；认证应先于授权；限流、CORS 等中间件还要考虑路由和策略所需信息。[官方中间件说明](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/middleware/?view=aspnetcore-10.0)
 
-本项目在 UseClinicPipeline 中显式调用 UseRouting，再执行认证、授权、限流和 CSRF，并调用 MapControllers 映射 Controller。阅读时要同时看中间件顺序与 Controller 的特性。
+本项目在 UseClinicMiddleware 中显式调用 UseRouting，再执行认证、授权、限流和 CSRF，；MapClinicEndpoints 调用 MapControllers 映射 Controller。阅读时要同时看中间件顺序与 Controller 的特性。
 
 本项目先设置关联标识和响应头，再统一处理异常，随后执行认证、授权、限流和自定义 CSRF 校验。OisController 的 `[Authorize(Policy = "ois")]` 作用于整个 Controller，Workflow 还会校验具体业务操作的责任角色。
 
@@ -617,7 +619,7 @@ public class HealthTests
 | 6 | 为备注更新设计权限、版本和幂等语义 | 重复提交结果一致，旧版本更新失败，不产生部分写入 |
 | 7 | 补规则和数据库测试，再做打包验证 | 成功/失败/并发路径成立，迁移能在隔离库应用 |
 
-第 5～7 步的写操作应沿用本项目事务和幂等边界，不要另开一个绕过 OisService 的任意实体写入接口。练习的重点是走完一条从需求到交付的链路，而不是一次引入 MediatR、CQRS、微服务等额外框架。
+第 5～7 步的写操作应沿用本项目事务和幂等边界，不要另开一个绕过 CommandExecutor 的任意实体写入接口。练习的重点是走完一条从需求到交付的链路，而不是一次引入 MediatR、CQRS、微服务等额外框架。
 
 ## 12. 学完后回到这些代码
 
