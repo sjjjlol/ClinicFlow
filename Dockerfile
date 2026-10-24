@@ -22,9 +22,9 @@ WORKDIR /src
 COPY global.json Directory.Build.props Directory.Build.targets ./
 COPY backend/ backend/
 # --locked-mode：严格按 packages.lock.json 还原（≈ npm ci）
-RUN dotnet restore backend --locked-mode
+RUN dotnet restore backend/ClinicFlow.Api --locked-mode
 # 发布生产产物到 /out（≈ mvn package）
-RUN dotnet publish backend -c Release --no-restore -o /out
+RUN dotnet publish backend/ClinicFlow.Api -c Release --no-restore -o /out
 # 前端静态文件塞进 ASP.NET 的 wwwroot
 COPY --from=frontend /src/frontend/dist/ /out/wwwroot/
 # → 最终一个容器同时服务 API 和前端（Hosting/WebApplicationExtensions 的静态文件和回退端点托管它）
@@ -43,4 +43,4 @@ USER app
 # 声明监听端口（文档作用；真正映射靠 compose 的 ports）
 EXPOSE 8080
 # exec 数组形式 ENTRYPOINT：dotnet 进程成为 PID 1，能收到 docker stop 的 SIGTERM → 优雅停机
-ENTRYPOINT ["dotnet", "ClinicFlow.dll"]
+ENTRYPOINT ["dotnet", "ClinicFlow.Api.dll"]

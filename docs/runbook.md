@@ -100,3 +100,9 @@ CI 执行构建、OIS 规则/数据库/API/浏览器测试、迁移恢复及容�
 - 403：核对三个工作人员角色及操作责任角色。
 - 治疗受阻：核对预约时段、身份、当前计划审核/验证、处方版本和机器状态。
 - 升级失败：停止应用写入，检查迁移日志与备份，不要通过清空应用数据库绕过问题。
+
+## 分层后的工程入口
+
+启动/发布使用 `backend/ClinicFlow.Api`；EF CLI 使用 `backend/ClinicFlow.Infrastructure`。scripts/api.sh、Dockerfile、CI 和升级演练已使用这些工程路径。运行时需包含四层 DLL，使用 dotnet publish 的完整输出。
+
+默认集成事件只写 Outbox，未配置消息传输或工作者；如需接入请按[事件文档](events.md)注册 publisher 并安排投递任务。待发量会随业务增长，不能把写入 Outbox 当成外部已确认。

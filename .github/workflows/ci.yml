@@ -13,7 +13,7 @@ jobs:
           node-version: 24.13.1
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - run: dotnet restore backend --locked-mode && dotnet build backend --no-restore
+      - run: dotnet restore backend/ClinicFlow.Api --locked-mode && dotnet build backend/ClinicFlow.Api --no-restore
       - run: npm ci && npm run build
         working-directory: frontend
       - run: ./scripts/configure.sh && docker compose up -d --build --wait
@@ -34,7 +34,7 @@ jobs:
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:5173 >/dev/null && break || sleep 1; done
           npm --prefix frontend run test:e2e
       - run: |
-          dotnet publish backend -c Release -o artifacts/app
+          dotnet publish backend/ClinicFlow.Api -c Release -o artifacts/app
           cp -R frontend/dist artifacts/app/wwwroot
       - uses: actions/upload-artifact@v4
         with:

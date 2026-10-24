@@ -2,7 +2,7 @@
 
 本文面向写过 Java、熟悉 Spring Boot 和关系数据库的开发者。目标是理解一个 ASP.NET Core Web API 从需求、建项目、编码到测试和部署的完整过程，沿着 ClinicFlow 的现有代码理解每个开发阶段的输入、实现与结果。本文以讲解和代码导读为主，不设置动手任务。
 
-本文以当前仓库配置为准：.NET SDK `10.0.401`、目标框架 `net10.0`、ASP.NET Core、EF Core `9.0.20`、Pomelo MySQL Provider `9.0.0`。代码风格采用 .NET 5 时期的 C# 9 上限，使用普通类、显式构造函数及 Controller；运行时仍是 .NET 10。SDK 版本来自 `global.json`，依赖版本来自 `backend/ClinicFlow.csproj`。这些版本承担不同职责，不要求数字全部相同；升级时要核对 Provider 与 EF Core 的兼容性，不能只把所有包改为与 .NET 相同的主版本。
+本文以当前仓库配置为准：.NET SDK `10.0.401`、目标框架 `net10.0`、ASP.NET Core、EF Core `9.0.20`、Pomelo MySQL Provider `9.0.0`。代码风格采用 .NET 5 时期的 C# 9 上限，使用普通类、显式构造函数及 Controller；运行时仍是 .NET 10。SDK 版本来自 `global.json`，Web 依赖版本来自 `backend/ClinicFlow.Api/ClinicFlow.Api.csproj`，EF 依赖版本来自 `backend/ClinicFlow.Infrastructure/ClinicFlow.Infrastructure.csproj`。这些版本承担不同职责，不要求数字全部相同；升级时要核对 Provider 与 EF Core 的兼容性，不能只把所有包改为与 .NET 相同的主版本。
 
 ## 阅读路线
 
@@ -11,13 +11,13 @@
 | 开发阶段 | 要解决的问题 | 本项目入口 |
 | --- | --- | --- |
 | 1. 明确需求 | 谁操作什么，哪些规则必须成立 | [产品范围](ois-mvp.md)、[领域语言](../CONTEXT.md) |
-| 2. 建立工程 | SDK、项目、依赖和启动方式是什么 | `global.json`、`ClinicFlow.sln`、`backend/ClinicFlow.csproj` |
-| 3. 读懂 C# | 如何表达数据、依赖和异步 I/O | `backend/ClinicDb.cs`、`backend/Ois/Persistence/OisModel.cs` |
-| 4. 配置与装配 | 配置从哪里来，对象由谁创建 | `backend/Program.cs`、`backend/Hosting/`、`scripts/api.sh` |
-| 5. 建模与持久化 | 表、关系、查询和升级如何实现 | `backend/ClinicDb.cs`、`backend/Migrations/` |
-| 6. 实现业务 | 规则、事务、并发、幂等放在哪里 | `backend/Ois/Modules/`、`backend/Ois/CommandExecutor.cs` |
-| 7. 暴露 HTTP API | 请求如何绑定，响应如何生成 | `ReservationsController.BookTreatment` / `PrescriptionsController.SignPrescription` 等 Action、`backend/ApiDocumentation.cs` |
-| 8. 横切能力 | 错误、身份、权限、日志怎么统一 | `backend/Hosting/`、`backend/Middleware/`、`backend/Identity.cs` |
+| 2. 建立工程 | SDK、项目、依赖和启动方式是什么 | `global.json`、`ClinicFlow.sln`、`backend/ClinicFlow.Api/ClinicFlow.Api.csproj` |
+| 3. 读懂 C# | 如何表达数据、依赖和异步 I/O | `backend/ClinicFlow.Infrastructure/Persistence/ClinicDb.cs`、`backend/ClinicFlow.Infrastructure/Persistence/OisModel.cs` |
+| 4. 配置与装配 | 配置从哪里来，对象由谁创建 | `backend/ClinicFlow.Api/Program.cs`、`backend/ClinicFlow.Api/Hosting/`、`scripts/api.sh` |
+| 5. 建模与持久化 | 表、关系、查询和升级如何实现 | `backend/ClinicFlow.Infrastructure/Persistence/ClinicDb.cs`、`backend/ClinicFlow.Infrastructure/Persistence/Migrations/` |
+| 6. 实现业务 | 规则、事务、并发、幂等放在哪里 | `backend/ClinicFlow.Application/UseCases/`、`backend/ClinicFlow.Application/CommandExecutor.cs` |
+| 7. 暴露 HTTP API | 请求如何绑定，响应如何生成 | `ReservationsController.BookTreatment` / `PrescriptionsController.SignPrescription` 等 Action、`backend/ClinicFlow.Api/ApiDocumentation.cs` |
+| 8. 横切能力 | 错误、身份、权限、日志怎么统一 | `backend/ClinicFlow.Api/Hosting/`、`backend/ClinicFlow.Api/Middleware/`、`backend/ClinicFlow.Api/Identity.cs` |
 | 9. 测试与交付 | 怎么证明正确，怎么运行产物 | `tests/`、`Dockerfile`、`.github/workflows/ci.yml` |
 
 ## 1. 先明确需求、接口和模块边界
@@ -30,13 +30,13 @@ ClinicFlow 的一次写操作可沿下面的路径阅读：
 HTTP POST /api/ois/reservations/treatment
   → 认证、授权、CSRF 校验
   → ReservationsController：绑定专用请求，提取当前用户
-  → CommandExecutor.Execute：事务、锁、幂等、加载数据
+  → CommandExecutor.Execute → ICommandTransaction / EfCommandTransaction：事务、锁、幂等、加载数据
   → OisSession.Scheduling.BookTreatment：模块规则与领域状态变化
   → EF Core SaveChangesAsync + CommitAsync
   → HTTP JSON 响应
 ```
 
-这是职责划分，不是要求每层都新建一个程序集。小项目可以先用一个 Web 项目、按功能组织目录；边界稳定或确实需要独立复用时，再拆成 Application、Domain、Infrastructure 等项目。也不需要为了对应 Java 习惯，给每个类都加接口、给每张表都包一层 Repository。
+当前工程已把这些职责拆成 API、Application、Domain、Infrastructure 四个程序集，以项目引用约束依赖。业务上下文仍为模块化单体，不等于四个服务；无需给每个类加接口或给每张表包一层 Repository。
 
 本项目的分工是：Controller 处理 HTTP；CommandExecutor 协调一次业务操作；三个业务模块及其领域对象执行业务规则，OisSession 装配模块依赖；DbContext 负责数据库映射和持久化。先理解这些职责，比记住目录名字更有用。
 
@@ -107,8 +107,8 @@ HTTP POST /api/ois/reservations/treatment
 | 查看 SDK / 运行时 | `dotnet --list-sdks` / `dotnet --list-runtimes` | 区分“能构建”与“能运行” |
 | 给项目加依赖 | `dotnet add 项目路径 package 包名 --version 版本` | 更新 csproj；仓库启用锁文件时也要检查锁文件变化 |
 | 引用本地项目 | `dotnet add 项目路径 reference 依赖项目.csproj` | 建立编译依赖，不等于部署成另一个服务 |
-| 热更新开发 | `dotnet watch --project backend` | 监听变更，部分变更会重启进程；仍需准备连接串等环境 |
-| 发布 Release | `dotnet publish backend -c Release -o 输出目录` | 生成可部署文件，不自动启动服务 |
+| 热更新开发 | `dotnet watch --project backend/ClinicFlow.Api` | 监听变更，部分变更会重启进程；仍需准备连接串等环境 |
+| 发布 Release | `dotnet publish backend/ClinicFlow.Api -c Release -o 输出目录` | 生成可部署文件，不自动启动服务 |
 
 本仓库若使用脚本提供的 SDK，将命令中的 dotnet 换成 `./scripts/dotnet.sh`。添加依赖后需要有意更新和审查 packages.lock.json；CI 的 locked-mode 用于验证依赖可复现，不能期待它自动接受新依赖。
 
@@ -159,7 +159,7 @@ public class CreatePatientRequest
 | `new List<string> { "a", "b" }` | 显式创建并初始化集合 |
 | `namespace ClinicFlow { ... }` | 块命名空间；目录结构不强制决定命名空间 |
 | `this IServiceCollection services` | 静态扩展方法参数，例如 `services.AddClinicOpenApi()` |
-| `public CommandExecutor(ClinicDb db, TimeProvider clock) { ... }` | 普通构造函数，DI 通过参数提供依赖 |
+| `public CommandExecutor(ICommandTransaction transaction, TimeProvider clock) { ... }` | 普通构造函数，DI 通过参数提供依赖 |
 
 `using ClinicFlow;` 类似 import；`using var scope = ...` 则是资源管理，类似 try-with-resources。`await using` 对应异步释放，例如数据库事务。
 
@@ -190,7 +190,7 @@ var patients = await db.Patients
 
 ### 4.1 精简宿主与显式装配
 
-本项目入口使用 `WebApplication.CreateBuilder` 和 C# 9 顶层语句，无需手写 Main 或 Startup。核心装配流程如下，完整代码见 `backend/Program.cs`：
+本项目入口使用 `WebApplication.CreateBuilder` 和 C# 9 顶层语句，无需手写 Main 或 Startup。核心装配流程如下，完整代码见 `backend/ClinicFlow.Api/Program.cs`：
 
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
@@ -304,7 +304,7 @@ public class GreetingService : IGreetingService
 
 在 AddClinicServices 中调用 `services.AddScoped<IGreetingService, GreetingService>()`，Controller 构造函数即可接收 `IGreetingService service`，在 Action 中调用 `service.Greet(input.Name)`。这是“注册抽象到实现 → 容器创建对象 → 构造函数请求依赖”的完整过程；直接注入未注册的接口会失败。
 
-业务类同样可以通过构造器接收依赖。容器解析 CommandExecutor 时，会继续解析它的 ClinicDb 和 TimeProvider 参数。排查“Unable to resolve service”时，沿构造参数逐个检查注册，不要只看最外层服务。
+业务类同样可以通过构造器接收依赖。容器解析 CommandExecutor 时，会继续解析它的 ICommandTransaction 和 TimeProvider 参数；前者由 EfCommandTransaction 实现，再依赖 ClinicDb。排查“Unable to resolve service”时，沿构造参数逐个检查注册，不要只看最外层服务。
 
 ## 5. 数据库：先定义模型与约束，再生成迁移
 
@@ -328,11 +328,11 @@ public class GreetingService : IGreetingService
 # 还原仓库清单中的工具，并检查实际版本
 ./scripts/dotnet.sh tool restore
 ./scripts/dotnet.sh tool list --local
-./scripts/dotnet.sh ef migrations add AddPatientNote --project backend
-./scripts/dotnet.sh ef migrations script --idempotent --project backend --output migration.sql
+./scripts/dotnet.sh ef migrations add AddPatientNote --project backend/ClinicFlow.Infrastructure
+./scripts/dotnet.sh ef migrations script --idempotent --project backend/ClinicFlow.Infrastructure --output migration.sql
 ```
 
-`backend/DesignFactory.cs` 为 EF CLI 创建设计时 DbContext。生成迁移主要比较当前模型与模型快照，不是读取线上数据库后反推差异。这里的设计时连接串不是运行时连接串；需要连接数据库的命令不能直接拿它操作真实环境。
+`backend/ClinicFlow.Infrastructure/Persistence/DesignFactory.cs` 为 EF CLI 创建设计时 DbContext。生成迁移主要比较当前模型与模型快照，不是读取线上数据库后反推差异。这里的设计时连接串不是运行时连接串；需要连接数据库的命令不能直接拿它操作真实环境。
 
 本项目在启动时调用 `MigrateAsync()`，方便演示环境。生产多副本部署通常将迁移作为受控步骤，审查 SQL、备份、控制并发并准备恢复方案。不要删除已应用的历史迁移来“修复”升级，也不要用 `EnsureCreated` 与 Migrations 混着管理同一个库。项目的升级和数据删除范围见 [数据库设计](database-design.md)。
 
@@ -342,7 +342,7 @@ public class GreetingService : IGreetingService
 
 各模块的操作方法根据所属状态、命令、角色和传入时间决定能否执行；跨模块条件通过契约查询。它不负责打开数据库事务，也不自己访问系统时钟，因此能直接构造数据做规则测试。
 
-`CommandExecutor.Execute` 负责加载数据、调用规则、保存审计和幂等结果。时间通过注入的 `TimeProvider` 获取，再传给规则层。这与 Spring 中应用服务协调领域对象的思路相近。
+`CommandExecutor.Execute` 通过 ICommandTransaction 调用基础设施事务适配器，后者加载数据、执行委托、保存审计、幂等结果及 Outbox。应用层委托调用用例并处理领域事件。时间通过注入的 `TimeProvider` 获取，再传给规则层。这与 Spring 中应用服务协调领域对象的思路相近。
 
 ### 6.2 不要寻找必须存在的 @Transactional
 
@@ -424,7 +424,7 @@ public class GreetingRequest
 
 `[ApiController]`、`[HttpPost]` 类似 Spring MVC 的类/方法注解。继承 ControllerBase 提供 Ok、Unauthorized、NoContent、BadRequest、NotFound 等方法；返回 IActionResult 或 Task<IActionResult> 表达 HTTP 响应。依赖通过构造函数注入，业务逻辑委托给 Service。
 
-本项目按业务资源拆分 Controller，工作台查询单独保留。请求类型位于 Ois/Requests；每个 Action 直接调用明确业务方法，CommandExecutor 共用事务、幂等和审计。历史格式只保留在 Compatibility 内。继续新增接口时应遵守同样职责划分。
+本项目按业务资源拆分 Controller，工作台查询单独保留。请求类型位于 ClinicFlow.Api/Contracts/Requests，显式 ToCommand 后进入应用层；每个 Action 直接调用明确业务方法，CommandExecutor 通过 ICommandTransaction 共用事务、幂等和审计。历史格式只保留在 Compatibility 内。继续新增接口时应遵守同样职责划分。
 
 ### 7.4 绑定、校验、业务规则分开理解
 
@@ -574,7 +574,7 @@ public class HealthTests
 `build` 证明代码可编译；`publish` 生成部署产物；运行时环境仍需正确的配置、数据库和静态文件。普通框架依赖发布可用：
 
 ```sh
-./scripts/dotnet.sh publish backend -c Release -o /tmp/clinicflow-publish
+./scripts/dotnet.sh publish backend/ClinicFlow.Api -c Release -o /tmp/clinicflow-publish
 ```
 
 这条命令只发布后端，不会自动构建 React 并把产物放进 `wwwroot`。本项目完整交付由 Dockerfile 完成：Node 构建前端 → .NET SDK 发布后端并拷入前端资源 → ASP.NET Runtime 镜像运行 `ClinicFlow.dll`。最终镜像无需 SDK 和 Node。框架依赖发布需要匹配的运行时；自包含发布是另一种交付选择。
@@ -625,12 +625,14 @@ public class HealthTests
 
 按这个顺序读，能逐步解释一次请求为何得到最终结果：
 
-1. [`backend/Program.cs`](../backend/Program.cs)：宿主、启动迁移；再读 [`backend/Hosting/ServiceCollectionExtensions.cs`](../backend/Hosting/ServiceCollectionExtensions.cs) 的 DI 配置及 [`backend/Hosting/WebApplicationExtensions.cs`](../backend/Hosting/WebApplicationExtensions.cs) 的请求管道。
-2. [`backend/ClinicDb.cs`](../backend/ClinicDb.cs) 与 [`backend/Ois/Persistence/OisModel.cs`](../backend/Ois/Persistence/OisModel.cs)：实体、关系、索引和并发标记。
-3. [`backend/Ois/CommandExecutor.cs`](../backend/Ois/CommandExecutor.cs)：从 [`backend/Controllers/ReservationsController.cs`](../backend/Controllers/ReservationsController.cs) 跟进 Execute；查询单独看 [`backend/Ois/WorkspaceQuery.cs`](../backend/Ois/WorkspaceQuery.cs) 的 Snapshot。
-4. [`OisSession`](../backend/Ois/OisSession.cs) 的模块装配 → [`ReservationsOperations.cs`](../backend/Ois/Modules/Scheduling/ReservationsOperations.cs) 的预约入口 → [`SchedulingModule.cs`](../backend/Ois/Modules/Scheduling/SchedulingModule.cs) 的冲突规则 → [`Reservation`](../backend/Ois/Modules/Scheduling/Domain/Reservation.cs) 的状态变化。
-5. [`backend/Identity.cs`](../backend/Identity.cs) 与 [`backend/BusinessException.cs`](../backend/BusinessException.cs)：用户与错误如何进入业务链路。
+1. [`backend/ClinicFlow.Api/Program.cs`](../backend/ClinicFlow.Api/Program.cs)：宿主、启动迁移；再读 [`backend/ClinicFlow.Api/Hosting/ServiceCollectionExtensions.cs`](../backend/ClinicFlow.Api/Hosting/ServiceCollectionExtensions.cs) 的 DI 配置及 [`backend/ClinicFlow.Api/Hosting/WebApplicationExtensions.cs`](../backend/ClinicFlow.Api/Hosting/WebApplicationExtensions.cs) 的请求管道。
+2. [`backend/ClinicFlow.Infrastructure/Persistence/ClinicDb.cs`](../backend/ClinicFlow.Infrastructure/Persistence/ClinicDb.cs) 与 [`backend/ClinicFlow.Infrastructure/Persistence/OisModel.cs`](../backend/ClinicFlow.Infrastructure/Persistence/OisModel.cs)：实体、关系、索引和并发标记。
+3. [`backend/ClinicFlow.Application/CommandExecutor.cs`](../backend/ClinicFlow.Application/CommandExecutor.cs)：从 [`backend/ClinicFlow.Api/Controllers/ReservationsController.cs`](../backend/ClinicFlow.Api/Controllers/ReservationsController.cs) 跟进 Execute；查询单独看 [`backend/ClinicFlow.Infrastructure/Queries/EfWorkspaceReader.cs`](../backend/ClinicFlow.Infrastructure/Queries/EfWorkspaceReader.cs) 的 Snapshot。
+4. [`OisSession`](../backend/ClinicFlow.Application/OisSession.cs) 的模块装配 → [`ReservationsOperations.cs`](../backend/ClinicFlow.Application/UseCases/Scheduling/ReservationsOperations.cs) 的预约入口 → [`SchedulePolicy.cs`](../backend/ClinicFlow.Domain/Scheduling/SchedulePolicy.cs) 的冲突规则 → [`Reservation`](../backend/ClinicFlow.Domain/Scheduling/Reservation.cs) 的状态变化。
+5. [`backend/ClinicFlow.Api/Identity.cs`](../backend/ClinicFlow.Api/Identity.cs) 与 [`backend/ClinicFlow.Domain/Shared/BusinessException.cs`](../backend/ClinicFlow.Domain/Shared/BusinessException.cs)：用户与错误如何进入业务链路。
 6. [`tests/OisTests.cs`](../tests/OisTests.cs)：把一条失败规则与对应测试对照起来。
 7. [`Dockerfile`](../Dockerfile) 与 [运行手册](runbook.md)：解释开发启动与最终交付的差别。
 
 继续查阅时，以 Microsoft Learn 的 [.NET 文档](https://learn.microsoft.com/zh-cn/dotnet/)、[ASP.NET Core 文档](https://learn.microsoft.com/zh-cn/aspnet/core/?view=aspnetcore-10.0) 和 [EF Core 文档](https://learn.microsoft.com/zh-cn/ef/core/) 为入口，并选择与项目一致的版本。不要将旧 ASP.NET Framework 的配置方式、其他版本模板或其他数据库 Provider 的行为直接套到本项目。
+
+分层后建议再读[领域事件与集成事件](events.md)：聚合记录事实，应用层同步联动，基础设施将独立集成契约写入 Outbox。API 不直接访问 EF，Application 不引用 HTTP Request 类型。

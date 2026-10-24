@@ -19,7 +19,7 @@
 |OisAudit|操作者、变更内容、请求关联号及时间|
 |OisGate|所有 OIS 写事务先获取的排他行锁|
 
-具体字段和索引以 `backend/Ois/Persistence/OisModel.cs` 及模型快照为准。患者及计划关联受约束，签署历史不覆盖；版本校验、半开区间冲突和角色规则由服务端统一执行。
+具体字段和索引以 `backend/ClinicFlow.Infrastructure/Persistence/OisModel.cs` 及模型快照为准。患者及计划关联受约束，签署历史不覆盖；版本校验、半开区间冲突和角色规则由服务端统一执行。
 
 ## 历史清理迁移
 
@@ -39,6 +39,21 @@ Up 先创建新表，再复制任意验证字段非空或签署时间非空的�
 
 已有实例升级前备份并停止旧版应用写入。MySQL DDL 不能视为整批原子事务，迁移中断时应检查实际表结构和迁移历史，按备份恢复，不要盲目重跑或让旧新版同时写入。新版启动会自动迁移；回退应用代码前必须执行 Down 或恢复备份。这里只说明本次分离迁移的可逆性，历史 RemoveLegacyModules 的删除仍需要备份才能恢复。
 
-EF 映射集中于 `backend/Ois/Persistence/OisModel.cs`，实体定义在 `backend/Ois/Modules/*/Domain/`。同库外键和事务有意保留；三个模块并非三个独立数据库。WorkspaceQuery 用 ReservationResponse 重组旧 JSON 字段，客户端无需同步迁移数据模型。
+EF 映射集中于 `backend/ClinicFlow.Infrastructure/Persistence/OisModel.cs`，实体定义在 `backend/ClinicFlow.Domain/`。同库外键和事务有意保留；三个模块并非三个独立数据库。EfWorkspaceReader 用 ReservationResponse 重组旧 JSON 字段，客户端无需同步迁移数据模型。
 
 验证：`./scripts/test.sh --filter FullyQualifiedName~PhysicalValidationMigrationTests` 使用隔离测试库验证复制、读取和回退再升级；完整升级及备份恢复仍运行 `./scripts/upgrade-drill.sh`。
+
+## 四层重构与集成消息表
+
+EF 模型、设计时工厂和所有迁移位于 ClinicFlow.Infrastructure；运行宿主为 ClinicFlow.Api。历史实体 CLR 名称与迁移 ID 保留；新迁移 AddIntegrationOutbox 仅创建 OutboxMessage，不清空或重建业务表。历史业务记录不生成补发通知。
+
+OutboxMessage 保存 Id（稳定事件 ID）、Type、Version、Payload、OccurredUtc、PublishedUtc、Attempts、NextAttemptUtc、LastError；索引覆盖 PublishedUtc 与 NextAttemptUtc。它与业务、审计及幂等结果一起提交，发送在单独事务内完成。事件生命周期见[事件文档](events.md)。
+
+迁移命令在仓库根执行：
+
+```sh
+./scripts/dotnet.sh ef migrations list --project backend/ClinicFlow.Infrastructure
+./scripts/dotnet.sh ef migrations script --idempotent --project backend/ClinicFlow.Infrastructure --output migration.sql
+```
+
+设计时工厂不是生产连接配置；实际升级使用已配置连接的 API 启动迁移，或经过审核的 SQL。回退 AddIntegrationOutbox 会删除消息表，必须先保全待发与已发记录，并协调外部消费者；不能把普通表回退当成撤回已投递事件。四层迁移本身不改变现有业务表。

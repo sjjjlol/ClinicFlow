@@ -28,3 +28,5 @@
 技术栈：ASP.NET Core / EF Core / MySQL，React / TypeScript / Vite。
 
 升级已有数据库前先备份并停止旧版写入：本次 `SeparatePhysicalValidation` 迁移将历史验证字段搬到独立表；更早版本还会执行删除旧模块数据和非 OIS 账号的 `RemoveLegacyModules` 迁移。两种迁移的回退能力不同，见[升级说明](docs/database-design.md)。
+
+后端采用 Domain、Application、Infrastructure、API 四层工程；三个业务上下文仍共享单体部署和事务。[架构与依赖](docs/architecture.md)、[领域事件与集成事件](docs/events.md)、[复盘阅读顺序](docs/README.md)。默认只持久化集成事件 Outbox，尚未接入外部消息系统。

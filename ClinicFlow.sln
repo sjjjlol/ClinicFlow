@@ -9,7 +9,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "backend", "backend", "{1AE8
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ClinicFlow.Tests", "tests\ClinicFlow.Tests.csproj", "{2A949AEC-6E18-4FC2-9293-99C4DE7CDB6E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ClinicFlow", "backend\ClinicFlow.csproj", "{AE6E953B-8BAF-CD20-9D35-DA708631FC3D}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ClinicFlow.Api", "backend\ClinicFlow.Api\ClinicFlow.Api.csproj", "{AE6E953B-8BAF-CD20-9D35-DA708631FC3D}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tools", "tools", "{07C2787E-EAC7-C090-1BA3-A61EC2A24D84}"
 EndProject
@@ -27,6 +27,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		.dockerignore = .dockerignore
 		.env.example = .env.example
 		.gitignore = .gitignore
+		CONTEXT-MAP.md = CONTEXT-MAP.md
 		CONTEXT.md = CONTEXT.md
 		Directory.Build.props = Directory.Build.props
 		Directory.Build.targets = Directory.Build.targets
@@ -43,6 +44,9 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docs", "docs", "{20E04D9B-9
 	ProjectSection(SolutionItems) = preProject
 		docs\README.md = docs\README.md
 		docs\acceptance.md = docs\acceptance.md
+		docs\adr\0001-modular-monolith.md = docs\adr\0001-modular-monolith.md
+		docs\adr\0002-layered-events.md = docs\adr\0002-layered-events.md
+		docs\events.md = docs\events.md
 		docs\api.md = docs\api.md
 		docs\architecture.md = docs\architecture.md
 		docs\aspnet-core-learning.md = docs\aspnet-core-learning.md
@@ -50,6 +54,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docs", "docs", "{20E04D9B-9
 		docs\ef-core-learning.md = docs\ef-core-learning.md
 		docs\ois-mvp.md = docs\ois-mvp.md
 		docs\ois-runbook.md = docs\ois-runbook.md
+		docs\project-development-learning.md = docs\project-development-learning.md
 		docs\runbook.md = docs\runbook.md
 	EndProjectSection
 EndProject
@@ -97,6 +102,12 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "scripts", "scripts", "{81E8
 		scripts\upgrade-drill.sh = scripts\upgrade-drill.sh
 	EndProjectSection
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ClinicFlow.Domain", "backend\ClinicFlow.Domain\ClinicFlow.Domain.csproj", "{43028EA4-B54A-4040-91B1-357229A499B3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ClinicFlow.Application", "backend\ClinicFlow.Application\ClinicFlow.Application.csproj", "{3E8E4BC8-A1FF-4FC6-971F-7EA6FD64F3E4}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ClinicFlow.Infrastructure", "backend\ClinicFlow.Infrastructure\ClinicFlow.Infrastructure.csproj", "{990EC928-4A10-43EA-837A-C13B28595D56}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -143,17 +154,56 @@ Global
 		{59719F57-5BAB-4B88-A255-1AB0BC06B3B4}.Release|x64.Build.0 = Release|Any CPU
 		{59719F57-5BAB-4B88-A255-1AB0BC06B3B4}.Release|x86.ActiveCfg = Release|Any CPU
 		{59719F57-5BAB-4B88-A255-1AB0BC06B3B4}.Release|x86.Build.0 = Release|Any CPU
+		{43028EA4-B54A-4040-91B1-357229A499B3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{43028EA4-B54A-4040-91B1-357229A499B3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{43028EA4-B54A-4040-91B1-357229A499B3}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{43028EA4-B54A-4040-91B1-357229A499B3}.Debug|x64.Build.0 = Debug|Any CPU
+		{43028EA4-B54A-4040-91B1-357229A499B3}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{43028EA4-B54A-4040-91B1-357229A499B3}.Debug|x86.Build.0 = Debug|Any CPU
+		{43028EA4-B54A-4040-91B1-357229A499B3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{43028EA4-B54A-4040-91B1-357229A499B3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{43028EA4-B54A-4040-91B1-357229A499B3}.Release|x64.ActiveCfg = Release|Any CPU
+		{43028EA4-B54A-4040-91B1-357229A499B3}.Release|x64.Build.0 = Release|Any CPU
+		{43028EA4-B54A-4040-91B1-357229A499B3}.Release|x86.ActiveCfg = Release|Any CPU
+		{43028EA4-B54A-4040-91B1-357229A499B3}.Release|x86.Build.0 = Release|Any CPU
+		{3E8E4BC8-A1FF-4FC6-971F-7EA6FD64F3E4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3E8E4BC8-A1FF-4FC6-971F-7EA6FD64F3E4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3E8E4BC8-A1FF-4FC6-971F-7EA6FD64F3E4}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{3E8E4BC8-A1FF-4FC6-971F-7EA6FD64F3E4}.Debug|x64.Build.0 = Debug|Any CPU
+		{3E8E4BC8-A1FF-4FC6-971F-7EA6FD64F3E4}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{3E8E4BC8-A1FF-4FC6-971F-7EA6FD64F3E4}.Debug|x86.Build.0 = Debug|Any CPU
+		{3E8E4BC8-A1FF-4FC6-971F-7EA6FD64F3E4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3E8E4BC8-A1FF-4FC6-971F-7EA6FD64F3E4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3E8E4BC8-A1FF-4FC6-971F-7EA6FD64F3E4}.Release|x64.ActiveCfg = Release|Any CPU
+		{3E8E4BC8-A1FF-4FC6-971F-7EA6FD64F3E4}.Release|x64.Build.0 = Release|Any CPU
+		{3E8E4BC8-A1FF-4FC6-971F-7EA6FD64F3E4}.Release|x86.ActiveCfg = Release|Any CPU
+		{3E8E4BC8-A1FF-4FC6-971F-7EA6FD64F3E4}.Release|x86.Build.0 = Release|Any CPU
+		{990EC928-4A10-43EA-837A-C13B28595D56}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{990EC928-4A10-43EA-837A-C13B28595D56}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{990EC928-4A10-43EA-837A-C13B28595D56}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{990EC928-4A10-43EA-837A-C13B28595D56}.Debug|x64.Build.0 = Debug|Any CPU
+		{990EC928-4A10-43EA-837A-C13B28595D56}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{990EC928-4A10-43EA-837A-C13B28595D56}.Debug|x86.Build.0 = Debug|Any CPU
+		{990EC928-4A10-43EA-837A-C13B28595D56}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{990EC928-4A10-43EA-837A-C13B28595D56}.Release|Any CPU.Build.0 = Release|Any CPU
+		{990EC928-4A10-43EA-837A-C13B28595D56}.Release|x64.ActiveCfg = Release|Any CPU
+		{990EC928-4A10-43EA-837A-C13B28595D56}.Release|x64.Build.0 = Release|Any CPU
+		{990EC928-4A10-43EA-837A-C13B28595D56}.Release|x86.ActiveCfg = Release|Any CPU
+		{990EC928-4A10-43EA-837A-C13B28595D56}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
-		{B4A8E158-3CB7-5F58-8E07-41AFBC2820CE} = {8E5F698A-5063-5DA9-AF06-481C1B95385D}
-		{A7CB304E-384D-5106-A49D-7C4D271B4AC6} = {28FEC5F3-AA35-5CBA-9B52-90A577C9633C}
-		{D0011831-A975-5686-B2D2-9E71E3938238} = {28FEC5F3-AA35-5CBA-9B52-90A577C9633C}
 		{2A949AEC-6E18-4FC2-9293-99C4DE7CDB6E} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{AE6E953B-8BAF-CD20-9D35-DA708631FC3D} = {1AE8ACA6-933B-BF2A-3671-3E2EAC007D16}
 		{59719F57-5BAB-4B88-A255-1AB0BC06B3B4} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
+		{B4A8E158-3CB7-5F58-8E07-41AFBC2820CE} = {8E5F698A-5063-5DA9-AF06-481C1B95385D}
+		{A7CB304E-384D-5106-A49D-7C4D271B4AC6} = {28FEC5F3-AA35-5CBA-9B52-90A577C9633C}
+		{D0011831-A975-5686-B2D2-9E71E3938238} = {28FEC5F3-AA35-5CBA-9B52-90A577C9633C}
+		{43028EA4-B54A-4040-91B1-357229A499B3} = {1AE8ACA6-933B-BF2A-3671-3E2EAC007D16}
+		{3E8E4BC8-A1FF-4FC6-971F-7EA6FD64F3E4} = {1AE8ACA6-933B-BF2A-3671-3E2EAC007D16}
+		{990EC928-4A10-43EA-837A-C13B28595D56} = {1AE8ACA6-933B-BF2A-3671-3E2EAC007D16}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {0D0F123C-94BC-4B18-938E-3CF6FD2A4B76}

@@ -4,6 +4,6 @@
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../backend/ClinicFlow.csproj" />
+    <ProjectReference Include="../../backend/ClinicFlow.Infrastructure/ClinicFlow.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

@@ -7,7 +7,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using ClinicFlow;
 using ClinicFlow.Ois;
-using ClinicFlow.Ois.Requests;
+using ClinicFlow.Application.Commands;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 
@@ -49,7 +49,7 @@ namespace ClinicFlow.Tests
             }
             await using (var db = fixture.Db())
             {
-                var result = await new CommandExecutor(db, TimeProvider.System).Execute(request,
+                var result = await new CommandExecutor(new EfCommandTransaction(db), TimeProvider.System).Execute(request,
                     "historical-actor", "Clinician", key, "upgrade-test", default,
                     (state, input, actor, role, now) => throw new Exception("Replayed request executed twice"));
                 Assert.Equal("original-target", ((JsonElement)result).GetProperty("targetId").GetString());
@@ -59,8 +59,8 @@ namespace ClinicFlow.Tests
             // A changed business operation using that historical key must still conflict.
             await using (var db = fixture.Db())
             {
-                var error = await Assert.ThrowsAsync<BusinessException>(() => new CommandExecutor(db, TimeProvider.System).Execute(
-                    new CreateCaseRequest { PatientId = 2, Text = "changed" }, "historical-actor", "Clinician", key,
+                var error = await Assert.ThrowsAsync<BusinessException>(() => new CommandExecutor(new EfCommandTransaction(db), TimeProvider.System).Execute(
+                    new CreateCaseCommand { PatientId = 2, Text = "changed" }, "historical-actor", "Clinician", key,
                     "conflict-test", default, (state, input, actor, role, now) => state.Clinical.CreateCase(input, actor, role, now)));
                 Assert.Equal("idempotency_conflict", error.Code);
             }
@@ -70,17 +70,17 @@ namespace ClinicFlow.Tests
         public async Task Historical_keys_replay_through_resource_requests_without_reexecuting()
         {
             await Replay("case", new ScenarioCommand { PatientId = 1, Text = "legacy case" },
-                new CreateCaseRequest { PatientId = 1, Text = "legacy case" });
+                new CreateCaseCommand { PatientId = 1, Text = "legacy case" });
             await Replay("plan", new ScenarioCommand { CaseId = "case", Version = 3, ResourceId = "linac-a", Text = "plan", VerificationMethod = "method", AllowedDeviation = "limit" },
-                new RegisterPlanRequest { CaseId = "case", Version = 3, ResourceId = "linac-a", Text = "plan", VerificationMethod = "method", AllowedDeviation = "limit" });
+                new RegisterPlanCommand { CaseId = "case", Version = 3, ResourceId = "linac-a", Text = "plan", VerificationMethod = "method", AllowedDeviation = "limit" });
             await Replay("book", new ScenarioCommand { Kind = "Experiment", PlanId = "plan", ResourceId = "linac-a", StartUtc = DateTimeOffset.Parse("2035-01-01T08:00:00+08:00"), EndUtc = DateTimeOffset.Parse("2035-01-01T09:00:00+08:00") },
-                new BookExperimentRequest { PlanId = "plan", ResourceId = "linac-a", StartUtc = DateTimeOffset.Parse("2035-01-01T08:00:00+08:00"), EndUtc = DateTimeOffset.Parse("2035-01-01T09:00:00+08:00") });
+                new BookExperimentCommand { PlanId = "plan", ResourceId = "linac-a", StartUtc = DateTimeOffset.Parse("2035-01-01T08:00:00+08:00"), EndUtc = DateTimeOffset.Parse("2035-01-01T09:00:00+08:00") });
             await Replay("save-draft", new ScenarioCommand { CaseId = "case", Version = 2, Kind = "prescribe", DraftVersion = 4, DraftJson = "{\"text\":\"历史草稿\"}" },
-                new SavePrescriptionDraftRequest { CaseId = "case", Version = 2, DraftVersion = 4, DraftJson = "{\"text\":\"历史草稿\"}" });
+                new SavePrescriptionDraftCommand { CaseId = "case", Version = 2, DraftVersion = 4, DraftJson = "{\"text\":\"历史草稿\"}" });
             await Replay("correction", new ScenarioCommand { Id = "plan", Version = 2, Text = "correction", Reason = "reason" },
-                new CorrectPlanRequest { Id = "plan", Version = 2, Text = "correction", Reason = "reason" });
+                new CorrectPlanCommand { Id = "plan", Version = 2, Text = "correction", Reason = "reason" });
             await Replay("machine", new ScenarioCommand { Id = "linac-a", Version = 2, Available = false, Reason = "maintenance" },
-                new SetMachineAvailabilityRequest { Id = "linac-a", Version = 2, Available = false, Reason = "maintenance" });
+                new SetMachineAvailabilityCommand { Id = "linac-a", Version = 2, Available = false, Reason = "maintenance" });
         }
 
         [Fact]
@@ -105,7 +105,7 @@ namespace ClinicFlow.Tests
             }
             await using (var db = fixture.Db())
             {
-                var snapshot = await new WorkspaceQuery(db).Snapshot("clinician", default);
+                var snapshot = await new EfWorkspaceReader(db).Snapshot("clinician", default);
                 Assert.Equal("{\"text\":\"旧草稿\"}", Assert.Single(snapshot.Drafts).Payload);
                 Assert.Equal(2, snapshot.Audits.Count);
                 foreach (var audit in snapshot.Audits)
@@ -113,8 +113,8 @@ namespace ClinicFlow.Tests
             }
             await using (var db = fixture.Db())
             {
-                var request = new SignPrescriptionRequest { Id = "historical-case", Version = 1, Diagnosis = "diagnosis", Text = "prescription", TreatmentSite = "site", TreatmentMaterials = "none", TotalDoseGy = 60, FractionDoseGy = 2, Fractions = 30 };
-                await new CommandExecutor(db, TimeProvider.System).Execute(request, "clinician", "Clinician", "sign-upgrade", "test", default,
+                var request = new SignPrescriptionCommand { Id = "historical-case", Version = 1, Diagnosis = "diagnosis", Text = "prescription", TreatmentSite = "site", TreatmentMaterials = "none", TotalDoseGy = 60, FractionDoseGy = 2, Fractions = 30 };
+                await new CommandExecutor(new EfCommandTransaction(db), TimeProvider.System).Execute(request, "clinician", "Clinician", "sign-upgrade", "test", default,
                     (state, input, actor, role, now) => state.Clinical.SignPrescription(input, actor, role, now));
             }
             await using (var db = fixture.Db())

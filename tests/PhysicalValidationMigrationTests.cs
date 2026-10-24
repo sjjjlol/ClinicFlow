@@ -53,7 +53,7 @@ namespace ClinicFlow.Tests
                 Assert.Equal("physicist", result.SignedBy);
                 Assert.Equal(new DateTime(2030, 1, 1, 10, 0, 0), result.SignedUtc);
             });
-            var snapshot = await new WorkspaceQuery(db).Snapshot("physicist", default);
+            var snapshot = await new EfWorkspaceReader(db).Snapshot("physicist", default);
             var passed = snapshot.Reservations.Single(x => x.Reservation.Id == "passed").Reservation;
             Assert.Equal("Passed", passed.ValidationOutcome);
             Assert.Equal("ref:passed", passed.ResultAttachment);

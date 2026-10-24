@@ -2,14 +2,6 @@
   "version": 1,
   "dependencies": {
     "net10.0": {
-      "Microsoft.AspNetCore.OpenApi": {
-        "type": "Transitive",
-        "resolved": "10.0.12",
-        "contentHash": "7RnQ/UKn+kK3JDLmTpW+vVqNErWthGPAVAy1aIiBzv4ucQ6g9NFvOJUuT0PHcpvcJxGVxctMxj6t+NESWMrgHQ==",
-        "dependencies": {
-          "Microsoft.OpenApi": "[2.12.0, 3.0.0)"
-        }
-      },
       "Microsoft.EntityFrameworkCore": {
         "type": "Transitive",
         "resolved": "9.0.20",
@@ -115,11 +107,6 @@
         "resolved": "9.0.20",
         "contentHash": "F9PkV2d5cHwibxxgklXhXtvVgZlPCJ0rkuY+jpa34o3vdUr0DcGX7XQkZouWuoDSZoYF0gUydM778d0wNpwB+Q=="
       },
-      "Microsoft.OpenApi": {
-        "type": "Transitive",
-        "resolved": "2.12.0",
-        "contentHash": "0xB/be+f6qYOhvQPUrVsLrau+fkowYv6gt9RIkajMhwT7sZnqtcA797yW3bS5kgSje+AQW4xZgyLnW641YFioQ=="
-      },
       "MySqlConnector": {
         "type": "Transitive",
         "resolved": "2.4.0",
@@ -138,10 +125,19 @@
           "MySqlConnector": "2.4.0"
         }
       },
-      "clinicflow": {
+      "clinicflow.application": {
         "type": "Project",
         "dependencies": {
-          "Microsoft.AspNetCore.OpenApi": "[10.0.12, )",
+          "ClinicFlow.Domain": "[1.0.0, )"
+        }
+      },
+      "clinicflow.domain": {
+        "type": "Project"
+      },
+      "clinicflow.infrastructure": {
+        "type": "Project",
+        "dependencies": {
+          "ClinicFlow.Application": "[1.0.0, )",
           "Microsoft.EntityFrameworkCore.Relational": "[9.0.20, )",
           "Pomelo.EntityFrameworkCore.MySql": "[9.0.0, )"
         }

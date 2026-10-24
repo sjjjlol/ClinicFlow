@@ -700,7 +700,7 @@ namespace ClinicFlow.Tests
         async Task<object> Send(string op, ScenarioCommand c, string role = "Scheduler", string? key = null)
         {
             await using var db = fixture.Db();
-            return await new CommandExecutor(db, TimeProvider.System).Execute(
+            return await new CommandExecutor(new EfCommandTransaction(db), TimeProvider.System).Execute(
                 op,
                 c,
                 role.ToLowerInvariant(),
@@ -747,7 +747,7 @@ namespace ClinicFlow.Tests
             async Task<string> Act(string op, ScenarioCommand input, string role)
             {
                 await using var db = fixture.Db();
-                var result = await new CommandExecutor(db, clock).Execute(
+                var result = await new CommandExecutor(new EfCommandTransaction(db), clock).Execute(
                     op,
                     VerificationInputs.Complete(op, input),
                     role.ToLowerInvariant(),

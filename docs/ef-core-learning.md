@@ -758,7 +758,7 @@ var affected = await db.Patients
 
 HasData 适合固定 Id、稳定的小型参考数据；相关变更可进入迁移。不要在 OnModelCreating 中用 DateTime.Now、Guid.NewGuid 或随机密码生成不稳定的种子，否则每次模型比较都可能出现变化。用户密码初始化等运行时行为，应有独立且可重复执行的初始化流程。
 
-ClinicFlow 用 HasData 配置固定资源和虚构患者，用 Identity.Seed 在启动时按配置创建演示用户。这两种初始化不是一个机制。
+ClinicFlow 用 HasData 配置固定资源和虚构患者，用 StaffAccounts.Seed 在启动时按配置创建演示用户。这两种初始化不是一个机制。
 
 ### 11.2 如何看到实际 SQL
 
@@ -810,16 +810,16 @@ EF 可通过标准 ILogger 管道记录日志；本例不默认启用敏感参�
 | PhysicalValidation：ReservationId 主键及外键 | 每个实验预约至多一份签署结果 | 独立实体不实现 IOisEntity，也不按可变状态维护 Version；重测使用新预约 |
 | HasOne<T>().WithMany() + Restrict | 即使无导航属性也配置外键及删除行为 | 无导航不代表无数据库关系 |
 | OisStateStore.Load | 加载实体和只读患者列表 | 大部分 OIS 对象需要跟踪，供规则变更后保存 |
-| CommandExecutor.Track | 将规则中新建的 Detached 对象 Add 进上下文 | 已查询的跟踪对象无需再次 Add |
+| EfCommandTransaction.Track | 将规则中新建的 Detached 对象 Add 进上下文 | 已查询的跟踪对象无需再次 Add |
 | OisGate + SELECT FOR UPDATE | 多个 API 进程也通过数据库串行获取写锁 | 它是演示范围的串行写入设计，不是 EF 通用默认机制 |
 | SaveChanges + Commit | 业务、审计、幂等记录一起提交 | 不能拆成分别提交的“先业务后审计” |
-| Hosting/DatabaseInitialization.cs：MigrateAsync / Identity.Seed | 演示启动时应用迁移及初始化账号 | 生产升级和多副本需独立设计 |
+| Hosting/DatabaseInitialization.cs：MigrateAsync / StaffAccounts.Seed | 演示启动时应用迁移及初始化账号 | 生产升级和多副本需独立设计 |
 
 可以按“配置 → 模型 → 迁移 → Load → OisSession → 所属模块 → Track → Save → Commit”的顺序，选一个创建计划或预约命令跟踪到数据库。每看到一个配置，都回答：它影响 C#、模型元数据、SQL 结构，还是请求执行？这能避免把不同层的保证混在一起。
 
 ## 13. 将持久化过程串起来
 
-以预约为例，`OisStateStore.Load` 返回内部数据容器，已有实体大多处于跟踪状态；`OisSession` 将各集合交给所属模块。`SchedulingModule` 修改已有预约，或向状态列表加入新的 Reservation；此时修改还发生在内存中。`CommandExecutor.Track` 将新增对象加入 DbContext，随后 `SaveChangesAsync` 把业务变更、审计和幂等响应写入同一事务，`CommitAsync` 才完成提交。
+以预约为例，`OisStateStore.Load` 返回内部数据容器，已有实体大多处于跟踪状态；`OisSession` 将各集合交给所属模块。`SchedulingModule` 修改已有预约，或向状态列表加入新的 Reservation；此时修改还发生在内存中。`EfCommandTransaction.Track` 将新增对象加入 DbContext，随后 `SaveChangesAsync` 把业务变更、审计、幂等响应及 Outbox 写入同一事务，`CommitAsync` 才完成提交。
 
 Version 有两层作用：规则执行前比较客户端版本与当前实体版本，避免基于过期页面操作；保存时 EF 根据并发令牌检测数据库行是否已改变。普通整数令牌不会自行递增，更新操作必须按业务语义维护它。预约范围冲突则依靠 OisGate 锁和时段规则解决，不能仅靠 Version。
 
@@ -827,4 +827,6 @@ Version 有两层作用：规则执行前比较客户端版本与当前实体版
 
 完整业务背景见 [项目开发顺序详解](project-development-learning.md)。本篇保留独立示例代码与命令用于解释机制，不要求另建工程或完成练习。
 
-当前验证记录已通过 SeparatePhysicalValidation 迁移从 Reservation 拆入 PhysicalValidation，不能直接删除旧列而不复制数据。映射位于 `backend/Ois/Persistence/OisModel.cs`，实体位于各模块的 Domain 目录；非公共 setter 可由 EF 实体化，外部调用者通过模块命令改变状态。读取工作台时使用 ReservationResponse 保持原 JSON，详见[数据库与升级](database-design.md)。
+当前验证记录已通过 SeparatePhysicalValidation 迁移从 Reservation 拆入 PhysicalValidation，不能直接删除旧列而不复制数据。映射位于 `backend/ClinicFlow.Infrastructure/Persistence/OisModel.cs`，实体位于 ClinicFlow.Domain 的业务目录；非公共 setter 可由 EF 实体化，外部调用者通过模块命令改变状态。读取工作台时使用 ReservationResponse 保持原 JSON，详见[数据库与升级](database-design.md)。
+
+当前 Outbox 是实际持久化机制：领域事件由应用层同步处理，外部通知由独立投递事务处理；失败和重复投递不能靠 EF 业务事务回滚外部系统，见[事件文档](events.md)。

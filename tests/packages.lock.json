@@ -229,10 +229,27 @@
           "xunit.extensibility.core": "[2.9.3]"
         }
       },
-      "clinicflow": {
+      "clinicflow.api": {
         "type": "Project",
         "dependencies": {
-          "Microsoft.AspNetCore.OpenApi": "[10.0.12, )",
+          "ClinicFlow.Application": "[1.0.0, )",
+          "ClinicFlow.Infrastructure": "[1.0.0, )",
+          "Microsoft.AspNetCore.OpenApi": "[10.0.12, )"
+        }
+      },
+      "clinicflow.application": {
+        "type": "Project",
+        "dependencies": {
+          "ClinicFlow.Domain": "[1.0.0, )"
+        }
+      },
+      "clinicflow.domain": {
+        "type": "Project"
+      },
+      "clinicflow.infrastructure": {
+        "type": "Project",
+        "dependencies": {
+          "ClinicFlow.Application": "[1.0.0, )",
           "Microsoft.EntityFrameworkCore.Relational": "[9.0.20, )",
           "Pomelo.EntityFrameworkCore.MySql": "[9.0.0, )"
         }

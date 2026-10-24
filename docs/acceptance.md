@@ -25,3 +25,7 @@
 新增测试覆盖：模块不持有其他业务模块实体及全局状态、摘要不可修改；处方修订与治疗开始并发互斥；验证签署后故障导致计划、实验预约、停机、待办、审计和幂等结果整体回滚，同 key 可重试；历史验证字段搬移、工作台响应兼容和 Down/Up 数据往返。
 
 .NET 使用 clinicflow_tests，HTTP 使用独立的 clinicflow_ddd_http_tests 和临时演示凭据，升级演练使用 clinicflow_upgrade_tests。没有迁移现有应用库或修改本地 .env。本次未重跑浏览器测试；前端源码和请求契约未改，工作台响应由 ReservationResponse 兼容投影，并经 HTTP 回归验证。
+
+## DDD 分层与事件回归
+
+LayerTests 验证 Domain/Application 的依赖方向和响应 DTO 隔离；ModuleTransactionTests 验证事件联动与数据整体回滚、重放无重复 Outbox；OutboxTests 验证失败退避、稳定事件 ID 和已确认记录不重发。真实消息中间件及消费者未接入，不在当前端到端验收范围。
