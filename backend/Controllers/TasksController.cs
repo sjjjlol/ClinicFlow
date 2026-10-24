@@ -2,7 +2,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using ClinicFlow.Ois;
 using ClinicFlow.Ois.Requests;
-using ClinicFlow.Ois.Operations;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ClinicFlow.Controllers
@@ -16,7 +15,7 @@ namespace ClinicFlow.Controllers
         public Task<IActionResult> ReadTask(string id, [FromBody] ReadTaskRequest input, CancellationToken ct)
         {
             input.Id = id;
-            return Run(input, (w, c, actor, role, now) => new TasksOperations(w).ReadTask(c, actor, role, now), ct);
+            return Run(input, (w, c, actor, role, now) => w.Support.ReadTask(c, actor, role, now), ct);
         }
 
         [HttpPost("tasks/{id}/resolve")]
@@ -24,7 +23,7 @@ namespace ClinicFlow.Controllers
         public Task<IActionResult> ResolveTask(string id, [FromBody] ResolveTaskRequest input, CancellationToken ct)
         {
             input.Id = id;
-            return Run(input, (w, c, actor, role, now) => new TasksOperations(w).ResolveTask(c, actor, role, now), ct);
+            return Run(input, (w, c, actor, role, now) => w.Support.ResolveTask(c, actor, role, now), ct);
         }
     }
 }

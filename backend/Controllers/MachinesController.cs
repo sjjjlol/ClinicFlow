@@ -2,7 +2,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using ClinicFlow.Ois;
 using ClinicFlow.Ois.Requests;
-using ClinicFlow.Ois.Operations;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ClinicFlow.Controllers
@@ -16,7 +15,7 @@ namespace ClinicFlow.Controllers
         public Task<IActionResult> SetMachineAvailability(string id, [FromBody] SetMachineAvailabilityRequest input, CancellationToken ct)
         {
             input.Id = id;
-            return Run(input, (w, c, actor, role, now) => new MachinesOperations(w).SetMachineAvailability(c, actor, role, now), ct);
+            return Run(input, (w, c, actor, role, now) => w.Scheduling.SetMachineAvailability(c, actor, role, now), ct);
         }
     }
 }

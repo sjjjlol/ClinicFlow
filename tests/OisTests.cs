@@ -239,9 +239,9 @@ namespace ClinicFlow.Tests
                 Outcome = "Passed",
                 Text = "调整后通过",
             }, "Physicist", now.AddHours(2));
-            Assert.Equal("Failed", exp.ValidationOutcome);
-            Assert.Equal("Passed", retry.ValidationOutcome);
-            Assert.Equal("摆位需调整", exp.ValidationNote);
+            Assert.Equal("Failed", w.Validations.Single(x => x.ReservationId == exp.Id).ValidationOutcome);
+            Assert.Equal("Passed", w.Validations.Single(x => x.ReservationId == retry.Id).ValidationOutcome);
+            Assert.Equal("摆位需调整", w.Validations.Single(x => x.ReservationId == exp.Id).ValidationNote);
             Assert.Empty(w.Blockers(treatment));
             Run(w, "resolve-task", new ScenarioCommand { Id = task.Id, Version = task.Version, Text = "重测通过" }, "Physicist");
             Assert.NotNull(task.ResolvedBy);

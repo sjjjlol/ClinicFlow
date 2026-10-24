@@ -7,7 +7,6 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using ClinicFlow;
 using ClinicFlow.Ois;
-using ClinicFlow.Ois.Operations;
 using ClinicFlow.Ois.Requests;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
@@ -62,7 +61,7 @@ namespace ClinicFlow.Tests
             {
                 var error = await Assert.ThrowsAsync<BusinessException>(() => new CommandExecutor(db, TimeProvider.System).Execute(
                     new CreateCaseRequest { PatientId = 2, Text = "changed" }, "historical-actor", "Clinician", key,
-                    "conflict-test", default, (state, input, actor, role, now) => new CasesOperations(state).CreateCase(input, actor, role, now)));
+                    "conflict-test", default, (state, input, actor, role, now) => state.Clinical.CreateCase(input, actor, role, now)));
                 Assert.Equal("idempotency_conflict", error.Code);
             }
         }
@@ -116,7 +115,7 @@ namespace ClinicFlow.Tests
             {
                 var request = new SignPrescriptionRequest { Id = "historical-case", Version = 1, Diagnosis = "diagnosis", Text = "prescription", TreatmentSite = "site", TreatmentMaterials = "none", TotalDoseGy = 60, FractionDoseGy = 2, Fractions = 30 };
                 await new CommandExecutor(db, TimeProvider.System).Execute(request, "clinician", "Clinician", "sign-upgrade", "test", default,
-                    (state, input, actor, role, now) => new PrescriptionsOperations(state).SignPrescription(input, actor, role, now));
+                    (state, input, actor, role, now) => state.Clinical.SignPrescription(input, actor, role, now));
             }
             await using (var db = fixture.Db())
             {

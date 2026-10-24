@@ -22,11 +22,13 @@ namespace ClinicFlow.Ois
             var audits = await db.Set<OisAudit>()
                 .Where(x => x.Action != "save-draft" || x.Actor == actor)
                 .OrderBy(x => x.Id).ToListAsync(ct);
+            var session = new OisSession(w);
+            var validations = w.Validations.ToDictionary(x => x.ReservationId);
             var reservations = w
                 .Reservations.Select(r => new WorkspaceReservation
                 {
-                    Reservation = r,
-                    Blockers = r.Status == "Booked" ? w.Blockers(r) : new List<string>(),
+                    Reservation = new ReservationResponse(r, validations.GetValueOrDefault(r.Id)),
+                    Blockers = r.Status == "Booked" ? session.Scheduling.Blockers(r.Id) : new List<string>(),
                 })
                 .ToList();
             await tx.CommitAsync(ct);

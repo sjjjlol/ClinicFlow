@@ -299,6 +299,44 @@ namespace ClinicFlow.Migrations
                     b.ToTable("OisTask");
                 });
 
+            modelBuilder.Entity("ClinicFlow.Ois.PhysicalValidation", b =>
+                {
+                    b.Property<string>("ReservationId")
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)");
+
+                    b.Property<string>("FailureType")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("MeasuredValues")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ResultAttachment")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("SignedBy")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime?>("SignedUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("ValidationNote")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ValidationOutcome")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.HasKey("ReservationId");
+
+                    b.ToTable("PhysicalValidation");
+                });
+
             modelBuilder.Entity("ClinicFlow.Ois.Prescription", b =>
                 {
                     b.Property<string>("Id")
@@ -371,15 +409,7 @@ namespace ClinicFlow.Migrations
                     b.Property<DateTime>("EndUtc")
                         .HasColumnType("datetime(6)");
 
-                    b.Property<string>("FailureType")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
                     b.Property<string>("Kind")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("MeasuredValues")
                         .IsRequired()
                         .HasColumnType("longtext");
 
@@ -397,29 +427,10 @@ namespace ClinicFlow.Migrations
                         .IsRequired()
                         .HasColumnType("varchar(36)");
 
-                    b.Property<string>("ResultAttachment")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("SignedBy")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<DateTime?>("SignedUtc")
-                        .HasColumnType("datetime(6)");
-
                     b.Property<DateTime>("StartUtc")
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("ValidationNote")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("ValidationOutcome")
                         .IsRequired()
                         .HasColumnType("longtext");
 
@@ -641,6 +652,15 @@ namespace ClinicFlow.Migrations
                     b.HasOne("ClinicFlow.Patient", null)
                         .WithMany()
                         .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ClinicFlow.Ois.PhysicalValidation", b =>
+                {
+                    b.HasOne("ClinicFlow.Ois.Reservation", null)
+                        .WithOne()
+                        .HasForeignKey("ClinicFlow.Ois.PhysicalValidation", "ReservationId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

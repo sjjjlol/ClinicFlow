@@ -17,7 +17,7 @@ namespace ClinicFlow.Controllers
         protected OisCommandController(CommandExecutor executor) => this.executor = executor;
 
         protected async Task<IActionResult> Run<T>(T input,
-            Func<OisState, T, string, string, DateTime, string> handler, CancellationToken ct) where T : class
+            Func<OisSession, T, string, string, DateTime, string> handler, CancellationToken ct) where T : class
         {
             return Ok(await executor.Execute(input,
                 User.FindFirstValue(ClaimTypes.NameIdentifier)!, User.FindFirstValue(ClaimTypes.Role)!,

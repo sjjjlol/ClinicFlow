@@ -1,6 +1,6 @@
 # 运行与验证手册
 
-在仓库根目录执行命令。业务操作见 [OIS 手册](ois-runbook.md)。已有数据库升级前先备份，删除范围及恢复说明见[数据库设计](database-design.md)。
+在仓库根目录执行命令。业务操作见 [OIS 手册](ois-runbook.md)。已有数据库升级前先备份并停止旧版写入，数据搬移、历史删除范围及恢复说明见[数据库设计](database-design.md)。
 
 ## Docker
 
@@ -10,7 +10,7 @@
 
 需要 Docker Compose、Bash、curl、OpenSSL。脚本保留已有 `.env` 或生成随机密码，启动 MySQL 和应用并自动迁移。访问 http://localhost:5080。
 
-三个账号：`scheduler`、`clinician`、`physicist`；密码见 `.env` 的 `DEMO_PASSWORD`。修改环境变量不会重置已有账号密码。无患者注册入口。
+三个账号：`scheduler`、`clinician`、`physicist`；密码见 `.env` 的 `DEMO_PASSWORD`。初次创建账号要求 DEMO_PASSWORD 至少 8 个字符；configure.sh 保留已有 .env，不会替你修复短密码。修改环境变量不会重置已有账号密码。无患者注册入口。
 
 停止且保留数据：`docker compose --profile full down`。日志：`docker compose logs --tail 100 app`。默认 DB_PORT=3308、APP_PORT=5080，可在 `.env` 配置。另起实例须隔离 Compose 项目名和端口。
 
@@ -24,6 +24,15 @@ docker compose up -d --wait
 ./scripts/api.sh
 ```
 
+需要 EF CLI 等本地工具时，在仓库根目录运行：
+
+```sh
+./scripts/dotnet.sh tool restore
+./scripts/dotnet.sh tool list --local
+```
+
+工具版本由根目录 `dotnet-tools.json` 固定，SDK 由 `global.json` 固定。首次还原依赖后才能使用 `--no-restore`；`scripts/dotnet.sh` 选择已安装的 SDK，不负责安装它。
+
 另一个终端：
 
 ```sh
@@ -35,10 +44,22 @@ npm --prefix frontend run dev
 
 ## 验证
 
+先按目标选择环境，HTTP 与浏览器测试不会自动切换到隔离数据库。
+
+| 验证 | 目标与副作用 |
+| --- | --- |
+| OisRulesTests、ModuleBoundariesTests | 内存规则与结构检查，无需数据库 |
+| `scripts/test.sh` | 使用 clinicflow_tests，数据库测试会删除并重建该库；不要并行启动多个测试进程操作同一库 |
+| `scripts/http-tests.sh` | 访问 API_URL 或 APP_PORT 指向的运行实例，写入该实例连接的数据库 |
+| Playwright | 访问 BASE_URL 或默认 5173，经过前端连接后端并写入业务数据 |
+| `scripts/upgrade-drill.sh` | 重建 clinicflow_upgrade_tests，生成并恢复 artifacts/upgrade-before.sql，不操作应用库 |
+
 ```sh
 # 仅规则，无需数据库
 ./scripts/dotnet.sh test tests --filter FullyQualifiedName~OisRulesTests
-# 需要 db，使用隔离的 clinicflow_tests 库
+# 模块边界检查，无需数据库
+./scripts/dotnet.sh test tests --filter FullyQualifiedName~ModuleBoundariesTests
+# 需要 db，使用隔离的 clinicflow_tests 库；包含验证记录迁移往返与跨模块事务测试
 ./scripts/test.sh
 npm --prefix frontend run build
 npm --prefix frontend run format:check
@@ -66,8 +87,15 @@ npm --prefix frontend run test:e2e
 
 CI 执行构建、OIS 规则/数据库/API/浏览器测试、迁移恢复及容器冒烟，并生成便携交付包。没有自动公网部署。
 
+## 升级核对
+
+已有实例先查看已应用迁移，再按[数据库设计](database-design.md)判断需要执行哪些步骤。启动会自动应用未执行的迁移；本次 SeparatePhysicalValidation 会搬移验证字段，更早版本还可能执行清理旧模块的迁移。升级后先确认 `/api/health` 响应中的 `status` 为 `ready`，再检查工作台的历史验证记录。当前健康接口在 `unavailable` 时也返回 HTTP 200，`curl -f` 单独不足以证明数据库就绪。
+
+本次模块重构保持现有资源 API 与 JSON 契约。若从旧 `/api/ois/commands/*` 客户端升级，仍需更新客户端路径；不要将两次升级混为一谈。
+
 ## 排障
 
+- 初次启动提示 Demo password requires 8+ characters：检查演示配置；若账号已存在但登录失败，确认使用的是原密码，修改 DEMO_PASSWORD 不会重置已有账号。
 - 登录 429：遵守 Retry-After；CSRF 错误：刷新令牌或重新登录。
 - 403：核对三个工作人员角色及操作责任角色。
 - 治疗受阻：核对预约时段、身份、当前计划审核/验证、处方版本和机器状态。

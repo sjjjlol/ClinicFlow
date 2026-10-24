@@ -4,7 +4,6 @@ using System.Threading.Tasks;
 using ClinicFlow;
 using ClinicFlow.Ois;
 using ClinicFlow.Ois.Requests;
-using ClinicFlow.Ois.Operations;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -53,7 +52,7 @@ namespace ClinicFlow.Tools
                 // Existing OIS request keys still replay, without duplicating a case or audit.
                 await new CommandExecutor(db, TimeProvider.System).Execute(new CreateCaseRequest { PatientId = 1, Text = "Preserved OIS case" },
                     "retained-clinician", "Clinician", "upgrade-preserve", "upgrade-drill", default,
-                    (state, input, actor, role, now) => new CasesOperations(state).CreateCase(input, actor, role, now));
+                    (state, input, actor, role, now) => state.Clinical.CreateCase(input, actor, role, now));
             }
             else if (mode != "verify-old") throw new Exception("prepare | upgrade | verify-old");
             if (await db.Set<CareCase>().CountAsync() != 1

@@ -17,7 +17,7 @@ namespace ClinicFlow.Ois
     }
     public sealed class WorkspaceReservation
     {
-        public Reservation Reservation { get; set; } = null!;
+        public ReservationResponse Reservation { get; set; } = null!;
         public List<string> Blockers { get; set; } = new List<string>();
     }
 }

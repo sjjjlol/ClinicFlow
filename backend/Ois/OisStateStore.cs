@@ -12,6 +12,7 @@ namespace ClinicFlow.Ois
                 Drafts = await db.Set<OisDraft>().ToListAsync(ct),
                 Cases = await db.Set<CareCase>().ToListAsync(ct),
                 Prescriptions = await db.Set<Prescription>().ToListAsync(ct),
+                Validations = await db.Set<PhysicalValidation>().ToListAsync(ct),
                 Plans = await db.Set<TreatmentPlan>().ToListAsync(ct),
                 Resources = await db.Set<OisResource>().ToListAsync(ct),
                 Reservations = await db.Set<Reservation>().ToListAsync(ct),

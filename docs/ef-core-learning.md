@@ -4,12 +4,12 @@
 
 示例使用与 ClinicFlow 一致的 .NET 10、EF Core 9.0.20、Pomelo 9.0.0 和 MySQL 8.4.8。示例中的 LearningPatient / LearningVisit 是独立教学模型，**不修改 ClinicFlow 的 Patients 表，也不代表它当前已有这些字段或接口**。完整示例只绑定本机回环地址，使用虚构数据；接入实际业务时，按照主文档补齐认证、授权、审计和幂等。
 
-## 阅读与动手顺序
+## 阅读顺序
 
-1. 第 1～3 节：认识组件，在仓库外建立学习工程。
-2. 第 4～6 节：创建三个源码文件，理解模型与关键配置。
-3. 第 7 节：生成迁移并应用到独立数据库。
-4. 第 8 节：通过 curl 跑通增删改查、唯一约束和版本冲突。
+1. 第 1～3 节：认识组件，理解独立示例工程与数据库的组成。
+2. 第 4～6 节：阅读模型、连接注册和 CRUD 源码，理解关键配置。
+3. 第 7 节：理解迁移生成与数据库升级的关系。
+4. 第 8 节：通过请求示例理解增删改查、唯一约束和版本冲突。
 5. 第 9～13 节：学习关联查询、事务、批量操作、诊断和项目实际实现。
 
 ## 1. EF Core 到底负责什么
@@ -74,7 +74,7 @@ dotnet ef --version
 
 `--allow-roll-forward` 允许工具在缺少其目标运行时时使用较新的 .NET 运行时，适合只安装 .NET 10 的本教程环境；它不会升级项目的 EF Core NuGet 版本。[官方工具参数说明](https://learn.microsoft.com/en-us/dotnet/core/tools/dotnet-tool-install)
 
-Local tool manifest 将工具版本记录在 `.config/dotnet-tools.json`。其他开发者取得工程后执行 `dotnet tool restore`，不需要各自猜测全局工具版本。当前 ClinicFlow 仓库尚未采用这个 manifest，这里是新学习工程的做法。
+Local tool manifest 将工具版本记录在 `.config/dotnet-tools.json`。其他开发者取得工程后执行 `dotnet tool restore`，不需要各自猜测全局工具版本。这是新学习工程的目录约定；ClinicFlow 已在仓库根目录使用 `dotnet-tools.json`，在根目录执行 `./scripts/dotnet.sh tool restore` 即可还原其固定工具版本，不必重复创建清单。
 
 Pomelo 9.0.0 对应 EF Core 9.0.x，支持 .NET 8 及以上。SDK 10 并不要求 EF Core 必须使用 10；优先遵循 Provider 的兼容矩阵。[Pomelo 官方兼容说明](https://github.com/PomeloFoundation/Pomelo.EntityFrameworkCore.MySql#compatibility)
 
@@ -90,7 +90,7 @@ docker run -d --rm --name clinicflow-ef-learning \
   mysql:8.4.8
 ```
 
-这是临时学习容器。这里的密码是公开的本机示例值，不要用于实际系统。容器没有挂持久化数据卷，停止后会删除容器中的练习数据库。
+这是临时学习容器。这里的密码是公开的本机示例值，不要用于实际系统。容器没有挂持久化数据卷，停止后会删除容器中的示例数据库。
 
 数据库初始化需要时间；下面命令成功返回 `1` 后再继续。未就绪时稍后重试。
 
@@ -611,7 +611,7 @@ namespace Learning.Api
 }
 ```
 
-ClinicFlow 的 DesignFactory 使用 design_only 连接串，适合生成模型迁移，不能假定它可执行真实数据库更新；实际演示环境由 Program.cs 的 MigrateAsync 应用迁移。`--project` 指定迁移所在项目，`--startup-project` 指定启动项目；多上下文时通过 `--context` 明确目标。
+ClinicFlow 的 DesignFactory 使用 design_only 连接串，适合生成模型迁移，不能假定它可执行真实数据库更新；实际演示环境由 Program.cs 调用 DatabaseInitialization 中的 MigrateAsync 应用迁移。`--project` 指定迁移所在项目，`--startup-project` 指定启动项目；多上下文时通过 `--context` 明确目标。
 
 ## 8. 用 HTTP 走完一次 CRUD
 
@@ -649,7 +649,7 @@ curl -i http://127.0.0.1:5099/api/patients/1
 
 还应试验空名称、超长 Note、非法页码、缺少 version。重复唯一键可能消耗自增序号，自增 Id 不保证连续，不应把“没有跳号”作为正确性标准。
 
-练习完成后在 API 终端按 Ctrl+C，在另一终端执行 `docker stop clinicflow-ef-learning`；只清理本教程创建的容器。
+示例环境的停止方式是：API 终端使用 Ctrl+C，容器使用 `docker stop clinicflow-ef-learning`。该命令仅针对示例容器。
 
 ## 9. 关联查询、UTC 与参数化 SQL
 
@@ -750,7 +750,7 @@ var affected = await db.Patients
 
 此处 `expectedVersion` 来自已校验的请求，affected 为零时需要按业务约定处理冲突或不存在。ExecuteUpdate 立即发 SQL，不需要 SaveChanges，不自动同步已跟踪实体，也不自动应用普通保存流程中的并发检查。多次 Execute 操作不会自动组合成一个整体事务。
 
-避免在同一上下文混用“已加载实体更新”和“直接批量更新”同一行，否则旧跟踪值可能覆盖新数据。ClinicFlow 的 Workflow、审计和幂等都依赖既定写入路径，不能为了少写几行代码改成绕过规则的批量写入。[官方批量更新说明](https://learn.microsoft.com/en-us/ef/core/saving/execute-insert-update-delete)
+避免在同一上下文混用“已加载实体更新”和“直接批量更新”同一行，否则旧跟踪值可能覆盖新数据。ClinicFlow 的业务规则、审计和幂等都依赖既定写入路径，不能为了少写几行代码改成绕过规则的批量写入。[官方批量更新说明](https://learn.microsoft.com/en-us/ef/core/saving/execute-insert-update-delete)
 
 ## 11. 种子数据、连接配置与性能诊断
 
@@ -803,30 +803,28 @@ EF 可通过标准 ILogger 管道记录日志；本例不默认启用敏感参�
 | AddClinicServices：AddDbContext + UseMySql | Scoped ClinicDb、读取 Clinic 连接串、指定 MySQL 8.4.8 | 不是扫描配置文件自动发现数据库 |
 | ClinicDb：Users / Patients / Idempotency | 给常用实体提供 DbSet 属性 | 其他实体可用 db.Set<T>()，不必为每种实体都写属性 |
 | OisModel.Configure<T>：HasKey + HasMaxLength(36) | OIS 字符串 Id 主键及长度 | Id 在应用中生成，不是 MySQL 自增 |
-| OisModel.Configure<T>：IsConcurrencyToken | 保存时检查旧 Version | Workflow 负责实际 Version++ |
+| OisModel.Configure<T>：IsConcurrencyToken | 保存时检查旧 Version | 所属模块/领域对象维护 Version++ |
 | TreatmentPlan：(CaseId, Revision) 唯一索引 | 同诊疗档案的计划版本号唯一 | 除业务检查外还有数据库兜底 |
 | Reservation：(ResourceId, StartUtc) 等索引 | 支持资源/患者维度的预约查找 | 普通索引不保证时段不重叠 |
 | TreatmentDelivery：ReservationId 唯一索引 | 同一预约的执行记录唯一 | 用约束配合业务幂等与状态规则 |
+| PhysicalValidation：ReservationId 主键及外键 | 每个实验预约至多一份签署结果 | 独立实体不实现 IOisEntity，也不按可变状态维护 Version；重测使用新预约 |
 | HasOne<T>().WithMany() + Restrict | 即使无导航属性也配置外键及删除行为 | 无导航不代表无数据库关系 |
 | OisStateStore.Load | 加载实体和只读患者列表 | 大部分 OIS 对象需要跟踪，供规则变更后保存 |
 | CommandExecutor.Track | 将规则中新建的 Detached 对象 Add 进上下文 | 已查询的跟踪对象无需再次 Add |
 | OisGate + SELECT FOR UPDATE | 多个 API 进程也通过数据库串行获取写锁 | 它是演示范围的串行写入设计，不是 EF 通用默认机制 |
 | SaveChanges + Commit | 业务、审计、幂等记录一起提交 | 不能拆成分别提交的“先业务后审计” |
-| Program.cs：MigrateAsync / Identity.Seed | 演示启动时应用迁移及初始化账号 | 生产升级和多副本需独立设计 |
+| Hosting/DatabaseInitialization.cs：MigrateAsync / Identity.Seed | 演示启动时应用迁移及初始化账号 | 生产升级和多副本需独立设计 |
 
-可以按“配置 → 模型 → 迁移 → Load → Apply → Track → Save → Commit”的顺序，选一个创建计划或预约命令跟踪到数据库。每看到一个配置，都回答：它影响 C#、模型元数据、SQL 结构，还是请求执行？这能避免把不同层的保证混在一起。
+可以按“配置 → 模型 → 迁移 → Load → OisSession → 所属模块 → Track → Save → Commit”的顺序，选一个创建计划或预约命令跟踪到数据库。每看到一个配置，都回答：它影响 C#、模型元数据、SQL 结构，还是请求执行？这能避免把不同层的保证混在一起。
 
-## 13. 学习验收
+## 13. 将持久化过程串起来
 
-完成本篇后，应该能够自己回答并动手证明：
+以预约为例，`OisStateStore.Load` 返回内部数据容器，已有实体大多处于跟踪状态；`OisSession` 将各集合交给所属模块。`SchedulingModule` 修改已有预约，或向状态列表加入新的 Reservation；此时修改还发生在内存中。`CommandExecutor.Track` 将新增对象加入 DbContext，随后 `SaveChangesAsync` 把业务变更、审计和幂等响应写入同一事务，`CommitAsync` 才完成提交。
 
-1. 为什么 .NET 10 工程可以使用 EF Core 9，Provider 与工具版本又怎样选？
-2. `DbSet`、`IQueryable`、`List` 各自什么时候接触数据库？
-3. Name 非空、最大长度、标识唯一分别在哪一层保障？
-4. Add、Update、Remove 与 SaveChanges 的时机有何不同？
-5. 为什么更新中只比较一次 Version 不够，为什么并发令牌还要递增？
-6. 修改实体以后，怎样审查迁移、升级已有数据并处理失败？
-7. 一次 SaveChanges、多个 SaveChanges、ExecuteUpdate 的事务边界分别是什么？
-8. 怎样从日志确认某个请求实际发了几条 SQL，有没有读取多余列？
+Version 有两层作用：规则执行前比较客户端版本与当前实体版本，避免基于过期页面操作；保存时 EF 根据并发令牌检测数据库行是否已改变。普通整数令牌不会自行递增，更新操作必须按业务语义维护它。预约范围冲突则依靠 OisGate 锁和时段规则解决，不能仅靠 Version。
 
-进一步实验：创建一条 Visit 后删除 Patient，观察 Restrict；在两个独立上下文同时加载同一患者，分别修改并保存，确认后保存者遇到并发异常；为新字段生成迁移并观察 Up / Down 与模型快照变化。用 MySQL 做这些验证，不能用 EF InMemory 的结果代替关系数据库的锁、外键和 SQL 行为。
+模型变更是另一条链路：实体与映射变化 → 生成迁移 → 审查 Up / Down 与模型快照 → 在隔离环境验证升级 → 应用迁移。修改 C# 属性不会直接修改已存在的 MySQL 表，历史迁移也不应为了匹配当前实体而被随意重写。
+
+完整业务背景见 [项目开发顺序详解](project-development-learning.md)。本篇保留独立示例代码与命令用于解释机制，不要求另建工程或完成练习。
+
+当前验证记录已通过 SeparatePhysicalValidation 迁移从 Reservation 拆入 PhysicalValidation，不能直接删除旧列而不复制数据。映射位于 `backend/Ois/Persistence/OisModel.cs`，实体位于各模块的 Domain 目录；非公共 setter 可由 EF 实体化，外部调用者通过模块命令改变状态。读取工作台时使用 ReservationResponse 保持原 JSON，详见[数据库与升级](database-design.md)。

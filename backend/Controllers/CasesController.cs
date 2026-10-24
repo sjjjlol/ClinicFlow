@@ -2,7 +2,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using ClinicFlow.Ois;
 using ClinicFlow.Ois.Requests;
-using ClinicFlow.Ois.Operations;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ClinicFlow.Controllers
@@ -15,7 +14,7 @@ namespace ClinicFlow.Controllers
         [Idempotent]
         public Task<IActionResult> CreateCase([FromBody] CreateCaseRequest input, CancellationToken ct)
         {
-            return Run(input, (w, c, actor, role, now) => new CasesOperations(w).CreateCase(c, actor, role, now), ct);
+            return Run(input, (w, c, actor, role, now) => w.Clinical.CreateCase(c, actor, role, now), ct);
         }
 
         [HttpPost("cases/{id}/terminate")]
@@ -23,7 +22,7 @@ namespace ClinicFlow.Controllers
         public Task<IActionResult> TerminateCase(string id, [FromBody] TerminateCaseRequest input, CancellationToken ct)
         {
             input.Id = id;
-            return Run(input, (w, c, actor, role, now) => new CasesOperations(w).TerminateCase(c, actor, role, now), ct);
+            return Run(input, (w, c, actor, role, now) => w.Clinical.TerminateCase(c, actor, role, now), ct);
         }
 
         [HttpPost("cases/{id}/notes")]
@@ -31,7 +30,7 @@ namespace ClinicFlow.Controllers
         public Task<IActionResult> AddCaseNote(string id, [FromBody] AddCaseNoteRequest input, CancellationToken ct)
         {
             input.Id = id;
-            return Run(input, (w, c, actor, role, now) => new CasesOperations(w).AddCaseNote(c, actor, role, now), ct);
+            return Run(input, (w, c, actor, role, now) => w.Clinical.AddCaseNote(c, actor, role, now), ct);
         }
     }
 }

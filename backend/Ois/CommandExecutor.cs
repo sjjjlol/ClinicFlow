@@ -31,7 +31,7 @@ namespace ClinicFlow.Ois
             string key,
             string correlation,
             CancellationToken ct,
-            Func<OisState, T, string, string, DateTime, string> apply
+            Func<OisSession, T, string, string, DateTime, string> apply
         ) where T : class
         {
             var op = CommandHistory.Operation<T>();
@@ -82,13 +82,14 @@ namespace ClinicFlow.Ois
                         .Select(x => JsonSerializer.SerializeToElement(x, x.GetType(), Json)),
                     Json
                 );
-                var targetId = apply(w, request, actor, role, now);
+                var targetId = apply(new OisSession(w), request, actor, role, now);
                 Track(w.Drafts);
                 foreach (var entry in db.ChangeTracker.Entries<OisDraft>().ToList())
                     if (!w.Drafts.Contains(entry.Entity)) db.Remove(entry.Entity);
                 Track(w.Cases);
                 Track(w.Prescriptions);
                 Track(w.Plans);
+                Track(w.Validations);
                 Track(w.Resources);
                 Track(w.Reservations);
                 Track(w.Deliveries);

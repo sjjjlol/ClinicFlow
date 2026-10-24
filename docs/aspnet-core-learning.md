@@ -1,22 +1,22 @@
 # 从 Java 到 ASP.NET Core：按项目开发顺序入门
 
-本文面向写过 Java、熟悉 Spring Boot 和关系数据库的开发者。目标是理解一个 ASP.NET Core Web API 从需求、建项目、编码到测试和部署的完整过程，并能沿着 ClinicFlow 的代码完成一次小功能开发。
+本文面向写过 Java、熟悉 Spring Boot 和关系数据库的开发者。目标是理解一个 ASP.NET Core Web API 从需求、建项目、编码到测试和部署的完整过程，沿着 ClinicFlow 的现有代码理解每个开发阶段的输入、实现与结果。本文以讲解和代码导读为主，不设置动手任务。
 
-本文以 main 分支当前配置为准：.NET SDK `10.0.401`、目标框架 `net10.0`、ASP.NET Core、EF Core `9.0.20`、Pomelo MySQL Provider `9.0.0`。代码风格采用 .NET 5 时期的 C# 9 上限，使用普通类、显式构造函数及 Controller；运行时仍是 .NET 10。SDK 版本来自 `global.json`，依赖版本来自 `backend/ClinicFlow.csproj`。这些版本承担不同职责，不要求数字全部相同；升级时要核对 Provider 与 EF Core 的兼容性，不能只把所有包改为与 .NET 相同的主版本。
+本文以当前仓库配置为准：.NET SDK `10.0.401`、目标框架 `net10.0`、ASP.NET Core、EF Core `9.0.20`、Pomelo MySQL Provider `9.0.0`。代码风格采用 .NET 5 时期的 C# 9 上限，使用普通类、显式构造函数及 Controller；运行时仍是 .NET 10。SDK 版本来自 `global.json`，依赖版本来自 `backend/ClinicFlow.csproj`。这些版本承担不同职责，不要求数字全部相同；升级时要核对 Provider 与 EF Core 的兼容性，不能只把所有包改为与 .NET 相同的主版本。
 
 ## 阅读路线
 
-建议按顺序阅读，每一步先了解“为什么要做”，再定位本项目实现。
+建议先读 [ClinicFlow 项目开发顺序详解](project-development-learning.md)，建立业务与工程的全貌，再按本篇章节补充 C# 和 ASP.NET Core 知识。每一步先了解“为什么要做”，再定位本项目实现。
 
 | 开发阶段 | 要解决的问题 | 本项目入口 |
 | --- | --- | --- |
 | 1. 明确需求 | 谁操作什么，哪些规则必须成立 | [产品范围](ois-mvp.md)、[领域语言](../CONTEXT.md) |
 | 2. 建立工程 | SDK、项目、依赖和启动方式是什么 | `global.json`、`ClinicFlow.sln`、`backend/ClinicFlow.csproj` |
-| 3. 读懂 C# | 如何表达数据、依赖和异步 I/O | `backend/ClinicDb.cs`、`backend/Ois/Models.cs` |
+| 3. 读懂 C# | 如何表达数据、依赖和异步 I/O | `backend/ClinicDb.cs`、`backend/Ois/Persistence/OisModel.cs` |
 | 4. 配置与装配 | 配置从哪里来，对象由谁创建 | `backend/Program.cs`、`backend/Hosting/`、`scripts/api.sh` |
 | 5. 建模与持久化 | 表、关系、查询和升级如何实现 | `backend/ClinicDb.cs`、`backend/Migrations/` |
-| 6. 实现业务 | 规则、事务、并发、幂等放在哪里 | `backend/Ois/Workflow.cs`、`backend/Ois/Service.cs` |
-| 7. 暴露 HTTP API | 请求如何绑定，响应如何生成 | `OisController.Book` / `Prescribe` 等 Action、`backend/ApiDocumentation.cs` |
+| 6. 实现业务 | 规则、事务、并发、幂等放在哪里 | `backend/Ois/Modules/`、`backend/Ois/CommandExecutor.cs` |
+| 7. 暴露 HTTP API | 请求如何绑定，响应如何生成 | `ReservationsController.BookTreatment` / `PrescriptionsController.SignPrescription` 等 Action、`backend/ApiDocumentation.cs` |
 | 8. 横切能力 | 错误、身份、权限、日志怎么统一 | `backend/Hosting/`、`backend/Middleware/`、`backend/Identity.cs` |
 | 9. 测试与交付 | 怎么证明正确，怎么运行产物 | `tests/`、`Dockerfile`、`.github/workflows/ci.yml` |
 
@@ -31,14 +31,14 @@ HTTP POST /api/ois/reservations/treatment
   → 认证、授权、CSRF 校验
   → ReservationsController：绑定专用请求，提取当前用户
   → CommandExecutor.Execute：事务、锁、幂等、加载数据
-  → 对应 Operations 方法：校验规则并改变状态
+  → OisSession.Scheduling.BookTreatment：模块规则与领域状态变化
   → EF Core SaveChangesAsync + CommitAsync
   → HTTP JSON 响应
 ```
 
 这是职责划分，不是要求每层都新建一个程序集。小项目可以先用一个 Web 项目、按功能组织目录；边界稳定或确实需要独立复用时，再拆成 Application、Domain、Infrastructure 等项目。也不需要为了对应 Java 习惯，给每个类都加接口、给每张表都包一层 Repository。
 
-本项目的分工是：端点处理 HTTP；Service 协调一次业务操作；Workflow 执行业务规则；DbContext 负责数据库映射和持久化。先理解这些职责，比记住目录名字更有用。
+本项目的分工是：Controller 处理 HTTP；CommandExecutor 协调一次业务操作；三个业务模块及其领域对象执行业务规则，OisSession 装配模块依赖；DbContext 负责数据库映射和持久化。先理解这些职责，比记住目录名字更有用。
 
 ## 2. 认识 .NET 工程，然后让它运行起来
 
@@ -284,7 +284,7 @@ services.AddScoped<BookingWindow>();
 
 Spring Bean 默认通常是 singleton；不要把这个习惯直接套到有 DbContext 的服务上。本项目的 `AddDbContext<ClinicDb>` 默认注册 Scoped，`CommandExecutor` 也是 Scoped，`TimeProvider.System` 作为 Singleton 注册。
 
-Singleton 不能直接持有 Scoped 服务，否则会让请求状态跨请求存活。启动任务或后台服务需要访问数据库时，显式创建作用域；本项目启动迁移使用 `app.Services.CreateScope()`。一般业务类优先构造器注入，而不是到处调用 `GetRequiredService`。生命周期与作用域规则见 [官方 DI 文档](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/dependency-injection?view=aspnetcore-10.0)。
+Singleton 不能直接持有 Scoped 服务，否则会让请求状态跨请求存活。启动任务或后台服务需要访问数据库时，显式创建作用域；本项目启动迁移使用 `app.Services.CreateAsyncScope()`。一般业务类优先构造器注入，而不是到处调用 `GetRequiredService`。生命周期与作用域规则见 [官方 DI 文档](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/dependency-injection?view=aspnetcore-10.0)。
 
 ### 4.5 从注册到注入：一个可跟踪的服务示例
 
@@ -308,7 +308,7 @@ public class GreetingService : IGreetingService
 
 ## 5. 数据库：先定义模型与约束，再生成迁移
 
-本节先建立整体认识。需要动手学习安装、连接、模型映射和 CRUD 时，继续阅读 [EF Core 实战：从接入 MySQL 到完成 CRUD](ef-core-learning.md)，里面提供独立工程的完整代码、关键配置逐项解释、迁移命令与验证请求。
+本节先建立整体认识。需要进一步理解安装、连接、模型映射和 CRUD 时，继续阅读 [EF Core 实战：从接入 MySQL 到完成 CRUD](ef-core-learning.md)，里面提供独立工程的完整代码、关键配置逐项解释、迁移命令与验证请求。
 
 ### 5.1 EF Core 的工作单位
 
@@ -322,11 +322,12 @@ public class GreetingService : IGreetingService
 
 开发新字段的一般顺序：修改实体 → 配置映射/约束 → 生成迁移 → 审查迁移 SQL → 在隔离数据库验证 → 部署时受控执行。
 
-下面是学习分支中的示例命令，只有实际改模型时才需要执行；`dotnet-ef` 工具需要单独准备。仓库当前没有本地工具 manifest，命令不会凭空可用。
+仓库根目录的 `dotnet-tools.json` 已固定本地工具版本，先还原工具。下面新增迁移的命令是学习分支示例，只有实际改模型时才执行，不要为阅读教程创建空迁移。
 
 ```sh
-# 工具版本与本项目 EF Core 9 对齐；已安装时先检查版本
-./scripts/dotnet.sh tool install --global dotnet-ef --version 9.0.20 --allow-roll-forward
+# 还原仓库清单中的工具，并检查实际版本
+./scripts/dotnet.sh tool restore
+./scripts/dotnet.sh tool list --local
 ./scripts/dotnet.sh ef migrations add AddPatientNote --project backend
 ./scripts/dotnet.sh ef migrations script --idempotent --project backend --output migration.sql
 ```
@@ -339,7 +340,7 @@ public class GreetingService : IGreetingService
 
 ### 6.1 规则与 I/O 分开
 
-`对应 Operations 方法` 根据当前状态、命令、角色和传入时间决定能否执行。它不负责打开数据库事务，也不自己访问系统时钟，因此能直接构造数据做规则测试。
+各模块的操作方法根据所属状态、命令、角色和传入时间决定能否执行；跨模块条件通过契约查询。它不负责打开数据库事务，也不自己访问系统时钟，因此能直接构造数据做规则测试。
 
 `CommandExecutor.Execute` 负责加载数据、调用规则、保存审计和幂等结果。时间通过注入的 `TimeProvider` 获取，再传给规则层。这与 Spring 中应用服务协调领域对象的思路相近。
 
@@ -369,13 +370,13 @@ EF Core 对支持事务的 Provider，单次 `SaveChanges` 默认在事务内完
 
 | 参数或依赖 | 来源 |
 | --- | --- |
-| 业务方法 | Action 直接选择对应 Operations 方法，不按字符串分发 |
+| 业务方法 | Action 通过 OisSession 直接选择所属模块的方法，不按字符串分发 |
 | `string id` | 路由目标 ID；正文不能覆盖 |
 | `[FromBody] BookTreatmentRequest input` | POST JSON 请求体 |
 | `CommandExecutor service` | Controller 构造函数注入 |
 | `HttpContext`、`User`、`Request` | ControllerBase 提供的当前请求属性 |
 | `CancellationToken ct` | 当前请求的取消信号 |
-| `Idempotency-Key` | 通过 `Request.Headers` 读取，交由 Service 校验 |
+| `Idempotency-Key` | 通过 `Request.Headers` 读取，交由 CommandExecutor 校验 |
 
 ### 7.2 一个可独立运行的小接口
 
@@ -429,7 +430,7 @@ public class GreetingRequest
 
 JSON 无法解析、字段类型错误、缺失请求体属于绑定问题；字段内容和长度由输入校验处理；资源冲突、角色约束属于业务规则。
 
-`[ApiController]` 会在 ModelState 无效时自动返回错误。AddClinicServices 将错误统一成 400 和 `{ code: "invalid_request", message, correlationId }`，并关闭非空引用类型隐式 Required 校验，使缺省值和显式 null 继续交由原 Service / Workflow 规则处理。
+`[ApiController]` 会在 ModelState 无效时自动返回错误。AddClinicServices 将错误统一成 400 和 `{ code: "invalid_request", message, correlationId }`，并关闭非空引用类型隐式 Required 校验，使缺省值和显式 null 继续交由 CommandExecutor 与所属模块规则处理。
 
 MVC 使用 AddJsonOptions 注册 UTC DateTime 转换器；中间件 WriteAsJsonAsync 使用独立的 HTTP JSON 配置，两处都需要保持契约一致。OpenAPI 由 AddClinicOpenApi 和 ApiDocumentation.cs 生成，`/api/openapi/v1.json` 要求 OIS 授权。
 
@@ -441,11 +442,11 @@ MVC 使用 AddJsonOptions 注册 UTC DateTime 转换器；中间件 WriteAsJsonA
 
 1. 定义请求 / 响应 DTO，明确 null 与缺省值的含义。
 2. 在端点做 HTTP 绑定，传入当前用户和 CancellationToken。
-3. 在 Service / Workflow 校验业务规则；写操作设计事务与并发边界。
+3. 在所属业务模块和领域对象中校验业务规则；写操作设计事务与并发边界。
 4. 将结果映射成约定的 HTTP 状态码和 JSON。
 5. 更新 OpenAPI 元数据，再验证成功、无效输入、无权限和冲突路径。
 
-最常见的三个边界错误是：把请求体当可信实体直接 Update；把登录成功当成拥有所有操作权限；保存业务数据成功后，再单独保存必须与它一致的审计记录。阅读本项目时，可以对照端点、Workflow 和 Service 检查它们如何分别处理这些问题。
+最常见的三个边界错误是：把请求体当可信实体直接 Update；把登录成功当成拥有所有操作权限；保存业务数据成功后，再单独保存必须与它一致的审计记录。阅读本项目时，可以对照 Controller、业务模块和 CommandExecutor 检查它们如何分别处理这些问题。
 
 ## 8. 请求管道、错误处理与安全
 
@@ -462,9 +463,9 @@ app.Use(async (context, next) =>
 
 理解为包裹式调用：A 进入 → B 进入 → 端点 → B 返回 → A 返回。不调用 next 会短路。异常处理要放在希望捕获的下游之前；认证应先于授权；限流、CORS 等中间件还要考虑路由和策略所需信息。[官方中间件说明](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/middleware/?view=aspnetcore-10.0)
 
-本项目在 UseClinicMiddleware 中显式调用 UseRouting，再执行认证、授权、限流和 CSRF，；MapClinicEndpoints 调用 MapControllers 映射 Controller。阅读时要同时看中间件顺序与 Controller 的特性。
+本项目在 UseClinicMiddleware 中显式调用 UseRouting，再执行认证、授权、限流和 CSRF；MapClinicEndpoints 调用 MapControllers 映射 Controller。阅读时要同时看中间件顺序与 Controller 的特性。
 
-本项目先设置关联标识和响应头，再统一处理异常，随后执行认证、授权、限流和自定义 CSRF 校验。OisController 的 `[Authorize(Policy = "ois")]` 作用于整个 Controller，Workflow 还会校验具体业务操作的责任角色。
+本项目先设置关联标识和响应头，再统一处理异常，随后执行认证、授权、限流和自定义 CSRF 校验。OisCommandController 的 `[Authorize(Policy = "ois")]` 作用于整个 Controller，所属模块还会校验具体业务操作的责任角色。
 
 ### 8.2 统一错误与日志
 
@@ -605,30 +606,29 @@ public class HealthTests
 
 不要把 `dotnet run` 能启动等同于完整交付。先验证后端 publish，再验证前端资源是否随包交付，最后使用最终运行方式做冒烟；这也是项目 CI 分别验证本机流程和容器流程的原因。
 
-## 11. 按开发顺序做一次完整练习
+## 11. 按项目开发顺序串起知识点
 
-建议在学习分支或仓库外工程中完成，先做只读功能，再做需要持久化的功能。
+项目的业务开发主线是“诊疗档案 → 处方 → 计划 → 审核与实验验证 → 治疗执行”，工程支撑则是“宿主与身份 → 数据模型 → 事务执行器 → 资源接口 → 工作台 → 测试与交付”。两条线相互配合：只有表和接口无法保证业务正确，只有内存规则也无法处理持久化和并发。
 
-| 步骤 | 练习 | 完成标准 |
+[项目开发顺序详解](project-development-learning.md) 按这两条线展开，包括真实提交演进、各阶段的设计原因、实际源码入口、一次请求的完整过程，以及失败后的状态变化。下表用于把本篇基础概念放回项目中：
+
+| 开发阶段 | 本篇对应知识 | 项目中形成的能力 |
 | --- | --- | --- |
-| 1 | 跑通项目，阅读 Program.cs 与 Hosting/ | 能指出服务注册、启动迁移、管道、端点与静态文件托管 |
-| 2 | 完成第 7 节独立 greetings API | curl 验证成功及空名称 400，能解释参数来源 |
-| 3 | 在学习分支增加受 OIS 策略保护的患者只读查询 | 通过服务查询、返回 DTO，支持分页并传 CancellationToken |
-| 4 | 为查询补齐 HTTP 验证与 OpenAPI 描述 | 未登录 401，合法用户可读，非法参数按约定返回错误 |
-| 5 | 给患者增加一个可选备注字段 | 实体、迁移、输入/输出 DTO、业务校验与前端展示一致 |
-| 6 | 为备注更新设计权限、版本和幂等语义 | 重复提交结果一致，旧版本更新失败，不产生部分写入 |
-| 7 | 补规则和数据库测试，再做打包验证 | 成功/失败/并发路径成立，迁移能在隔离库应用 |
-
-第 5～7 步的写操作应沿用本项目事务和幂等边界，不要另开一个绕过 CommandExecutor 的任意实体写入接口。练习的重点是走完一条从需求到交付的链路，而不是一次引入 MediatR、CQRS、微服务等额外框架。
+| 确认角色和流程 | 第 1 节 | 确定谁能签署、谁能排期、何时允许执行 |
+| 建立宿主和身份 | 第 2～4、8 节 | 服务装配、Cookie 身份和受保护的接口 |
+| 建模并保存状态 | 第 5 节及 EF Core 专篇 | 历史版本、外键、约束和迁移 |
+| 实现写入主线 | 第 6～7 节 | 明确请求、规则、事务、审计和幂等的职责 |
+| 连接工作台 | 项目详解第 9 节 | 表单请求、聚合快照、阻塞原因和刷新 |
+| 验证与交付 | 第 9～10 节 | 规则、数据库、HTTP、浏览器和升级的不同证据 |
 
 ## 12. 学完后回到这些代码
 
 按这个顺序读，能逐步解释一次请求为何得到最终结果：
 
 1. [`backend/Program.cs`](../backend/Program.cs)：宿主、启动迁移；再读 [`backend/Hosting/ServiceCollectionExtensions.cs`](../backend/Hosting/ServiceCollectionExtensions.cs) 的 DI 配置及 [`backend/Hosting/WebApplicationExtensions.cs`](../backend/Hosting/WebApplicationExtensions.cs) 的请求管道。
-2. [`backend/ClinicDb.cs`](../backend/ClinicDb.cs) 与 [`backend/Ois/Models.cs`](../backend/Ois/Models.cs)：实体、关系、索引和并发标记。
-3. [`backend/Ois/Service.cs`](../backend/Ois/Service.cs)：从 [`backend/Controllers/OisController.cs`](../backend/Controllers/OisController.cs) 跟进 Snapshot / Execute。
-4. [`backend/Ois/Workflow.cs`](../backend/Ois/Workflow.cs)：找一个 operation，跟踪其规则和状态变化。
+2. [`backend/ClinicDb.cs`](../backend/ClinicDb.cs) 与 [`backend/Ois/Persistence/OisModel.cs`](../backend/Ois/Persistence/OisModel.cs)：实体、关系、索引和并发标记。
+3. [`backend/Ois/CommandExecutor.cs`](../backend/Ois/CommandExecutor.cs)：从 [`backend/Controllers/ReservationsController.cs`](../backend/Controllers/ReservationsController.cs) 跟进 Execute；查询单独看 [`backend/Ois/WorkspaceQuery.cs`](../backend/Ois/WorkspaceQuery.cs) 的 Snapshot。
+4. [`OisSession`](../backend/Ois/OisSession.cs) 的模块装配 → [`ReservationsOperations.cs`](../backend/Ois/Modules/Scheduling/ReservationsOperations.cs) 的预约入口 → [`SchedulingModule.cs`](../backend/Ois/Modules/Scheduling/SchedulingModule.cs) 的冲突规则 → [`Reservation`](../backend/Ois/Modules/Scheduling/Domain/Reservation.cs) 的状态变化。
 5. [`backend/Identity.cs`](../backend/Identity.cs) 与 [`backend/BusinessException.cs`](../backend/BusinessException.cs)：用户与错误如何进入业务链路。
 6. [`tests/OisTests.cs`](../tests/OisTests.cs)：把一条失败规则与对应测试对照起来。
 7. [`Dockerfile`](../Dockerfile) 与 [运行手册](runbook.md)：解释开发启动与最终交付的差别。

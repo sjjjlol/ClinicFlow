@@ -2,7 +2,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using ClinicFlow.Ois;
 using ClinicFlow.Ois.Requests;
-using ClinicFlow.Ois.Operations;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ClinicFlow.Controllers
@@ -16,7 +15,7 @@ namespace ClinicFlow.Controllers
         public Task<IActionResult> StartTreatment(string id, [FromBody] StartTreatmentRequest input, CancellationToken ct)
         {
             input.Id = id;
-            return Run(input, (w, c, actor, role, now) => new TreatmentDeliveriesOperations(w).StartTreatment(c, actor, role, now), ct);
+            return Run(input, (w, c, actor, role, now) => w.Scheduling.StartTreatment(c, actor, role, now), ct);
         }
 
         [HttpPost("treatment-deliveries/{id}/finish")]
@@ -24,7 +23,7 @@ namespace ClinicFlow.Controllers
         public Task<IActionResult> FinishTreatment(string id, [FromBody] FinishTreatmentRequest input, CancellationToken ct)
         {
             input.Id = id;
-            return Run(input, (w, c, actor, role, now) => new TreatmentDeliveriesOperations(w).FinishTreatment(c, actor, role, now), ct);
+            return Run(input, (w, c, actor, role, now) => w.Scheduling.FinishTreatment(c, actor, role, now), ct);
         }
 
         [HttpPost("reservations/{id}/not-executed")]
@@ -32,7 +31,7 @@ namespace ClinicFlow.Controllers
         public Task<IActionResult> RecordNotExecuted(string id, [FromBody] RecordNotExecutedRequest input, CancellationToken ct)
         {
             input.Id = id;
-            return Run(input, (w, c, actor, role, now) => new TreatmentDeliveriesOperations(w).RecordNotExecuted(c, actor, role, now), ct);
+            return Run(input, (w, c, actor, role, now) => w.Scheduling.RecordNotExecuted(c, actor, role, now), ct);
         }
 
         [HttpPost("treatment-deliveries/{id}/corrections")]
@@ -40,7 +39,7 @@ namespace ClinicFlow.Controllers
         public Task<IActionResult> CorrectTreatmentDelivery(string id, [FromBody] CorrectTreatmentDeliveryRequest input, CancellationToken ct)
         {
             input.Id = id;
-            return Run(input, (w, c, actor, role, now) => new TreatmentDeliveriesOperations(w).CorrectTreatmentDelivery(c, actor, role, now), ct);
+            return Run(input, (w, c, actor, role, now) => w.Scheduling.CorrectTreatmentDelivery(c, actor, role, now), ct);
         }
     }
 }
