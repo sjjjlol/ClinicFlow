@@ -106,3 +106,5 @@ CI 执行构建、OIS 规则/数据库/API/浏览器测试、迁移恢复及容�
 启动/发布使用 `backend/ClinicFlow.Api`；EF CLI 使用 `backend/ClinicFlow.Infrastructure`。scripts/api.sh、Dockerfile、CI 和升级演练已使用这些工程路径。运行时需包含四层 DLL，使用 dotnet publish 的完整输出。
 
 默认集成事件只写 Outbox，未配置消息传输或工作者；如需接入请按[事件文档](events.md)注册 publisher 并安排投递任务。待发量会随业务增长，不能把写入 Outbox 当成外部已确认。
+
+CI 的两个任务固定使用 `ubuntu-24.04`。当前锁定的 Playwright 1.56.1 不支持 Ubuntu 26.04，不能直接随 `ubuntu-latest` 升级运行器；调整系统版本时应同步验证浏览器依赖安装及完整 E2E。

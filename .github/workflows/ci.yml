@@ -2,7 +2,8 @@ name: CI
 on: [push, pull_request]
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    # Playwright 1.56.1 supports Ubuntu 24.04; do not follow ubuntu-latest OS upgrades.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -49,7 +50,7 @@ jobs:
             /tmp/ui.log
             frontend/test-results
   container-smoke:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
