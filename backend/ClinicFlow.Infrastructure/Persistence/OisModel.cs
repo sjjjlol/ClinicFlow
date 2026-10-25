@@ -22,7 +22,19 @@ namespace ClinicFlow.Ois
                 .HasForeignKey<PhysicalValidation>(x => x.ReservationId).OnDelete(DeleteBehavior.Restrict);
             Configure<TreatmentDelivery>(b);
             Configure<OisTask>(b);
-            b.Entity<OisGate>().HasData(new OisGate());
+            b.Entity<OisGate>().HasData(new OisGate()); // Historical schema only; commands no longer lock this row.
+            b.Entity<OisCommandLock>().HasKey(x => x.Id);
+            b.Entity<OisCommandLock>().Property(x => x.Id).HasMaxLength(160);
+            b.Entity<ReservationOccupancy>().HasKey(x => new { x.SubjectType, x.SubjectId, x.SlotStartUtc });
+            b.Entity<ReservationOccupancy>().Property(x => x.SubjectType).HasMaxLength(16);
+            b.Entity<ReservationOccupancy>().Property(x => x.SubjectId).HasMaxLength(36);
+            b.Entity<ReservationOccupancy>().HasOne<Reservation>().WithMany()
+                .HasForeignKey(x => x.ReservationId).OnDelete(DeleteBehavior.Restrict);
+            b.Entity<ActiveExecution>().HasKey(x => new { x.SubjectType, x.SubjectId });
+            b.Entity<ActiveExecution>().Property(x => x.SubjectType).HasMaxLength(16);
+            b.Entity<ActiveExecution>().Property(x => x.SubjectId).HasMaxLength(36);
+            b.Entity<ActiveExecution>().HasOne<TreatmentDelivery>().WithMany()
+                .HasForeignKey(x => x.DeliveryId).OnDelete(DeleteBehavior.Restrict);
             b.Entity<OisAudit>().HasIndex(x => new { x.TargetId, x.Id });
             b.Entity<CareCase>()
                 .HasOne<Patient>()

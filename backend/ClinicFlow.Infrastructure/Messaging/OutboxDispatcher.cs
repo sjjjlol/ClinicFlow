@@ -20,7 +20,7 @@ namespace ClinicFlow.Ois
             if (batchSize < 1 || batchSize > 100) throw new ArgumentOutOfRangeException(nameof(batchSize));
             var now = clock.GetUtcNow().UtcDateTime;
             await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
-            // Separate from OisGate. Locked rows are skipped by concurrent delivery workers.
+            // Independent of command locks. Locked rows are skipped by concurrent delivery workers.
             var messages = await db.Set<OutboxMessage>().FromSqlInterpolated($@"
                 SELECT * FROM OutboxMessage
                 WHERE PublishedUtc IS NULL AND NextAttemptUtc <= {now}

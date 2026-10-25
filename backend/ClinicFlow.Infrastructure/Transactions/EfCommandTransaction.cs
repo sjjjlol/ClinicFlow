@@ -17,25 +17,26 @@ namespace ClinicFlow.Ois
         private static readonly JsonSerializerOptions Json = CommandHistory.Json;
         public async Task<object> Run(CommandEnvelope command, Func<OisSession, string> apply, CancellationToken ct)
         {
+            db.ChangeTracker.Clear();
             await using var tx = await db.Database.BeginTransactionAsync(
                 IsolationLevel.ReadCommitted,
                 ct
             );
             try
             {
-                // All OIS writers acquire this row first. Serializing a small single-site demo
-                // avoids phantom-overlap races between patient, machine and experiment bookings.
-                await db.Set<OisGate>()
-                    .FromSqlRaw("SELECT * FROM OisGate WHERE Id=1 FOR UPDATE")
-                    .ToListAsync(ct);
-                var prior = await db.Idempotency.SingleOrDefaultAsync(x => x.Id == command.Id, ct);
-                if (prior != null)
+                // Claim the request in the transaction itself. Concurrent identical keys wait here;
+                // rollback removes an unfinished claim, while committed requests replay their response.
+                await db.Database.ExecuteSqlInterpolatedAsync(
+                    $"INSERT INTO Idempotency (Id, Fingerprint, Response, CreatedUtc) VALUES ({command.Id}, {command.Fingerprint}, NULL, {DateTime.UtcNow}) ON DUPLICATE KEY UPDATE Id = Id", ct);
+                var prior = await db.Idempotency.SingleAsync(x => x.Id == command.Id, ct);
+                if (prior.Fingerprint != command.Fingerprint)
+                    throw new BusinessException("idempotency_conflict", "请求标识已用于其他内容");
+                if (prior.Response != null)
                 {
-                    if (prior.Fingerprint != command.Fingerprint)
-                        throw new BusinessException("idempotency_conflict", "请求标识已用于其他内容");
                     await tx.CommitAsync(ct);
-                    return JsonSerializer.Deserialize<JsonElement>(prior.Response!);
+                    return JsonSerializer.Deserialize<JsonElement>(prior.Response);
                 }
+                await CommandLocks.Acquire(db, command, ct);
                 var w = await OisStateStore.Load(db, ct);
                 var before = JsonSerializer.Serialize(
                     w.Cases.Cast<IOisEntity>()
@@ -85,18 +86,20 @@ namespace ClinicFlow.Ois
                             AtUtc = now,
                         }
                     );
-                db.Idempotency.Add(
-                    new IdempotencyRecord
-                    {
-                        Id = command.Id,
-                        Fingerprint = command.Fingerprint,
-                        Response = JsonSerializer.Serialize(result, Json),
-                        CreatedUtc = now,
-                    }
-                );
+                prior.Response = JsonSerializer.Serialize(result, Json);
+                prior.CreatedUtc = now;
+                await OccupancyStore.Synchronize(db, w, ct);
                 await db.SaveChangesAsync(ct);
                 await tx.CommitAsync(ct);
                 return result;
+            }
+            catch (DbUpdateException ex) when (ex.InnerException is MySqlException mysql && mysql.Number == 1062
+                && ex.Entries.Any(e => e.Entity is ReservationOccupancy || e.Entity is ActiveExecution))
+            {
+                await tx.RollbackAsync(ct);
+                bool executing = ex.Entries.Any(e => e.Entity is ActiveExecution);
+                throw new BusinessException(executing ? "in_progress" : "slot_conflict",
+                    executing ? "患者或机器仍有未结束的治疗" : "患者或资源时段冲突，请刷新日历");
             }
             catch (Exception ex)
                 when (ex is DbUpdateConcurrencyException || IsConcurrentConflict(ex) || IsConcurrentConflict(ex.InnerException))

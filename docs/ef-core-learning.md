@@ -811,7 +811,7 @@ EF 可通过标准 ILogger 管道记录日志；本例不默认启用敏感参�
 | HasOne<T>().WithMany() + Restrict | 即使无导航属性也配置外键及删除行为 | 无导航不代表无数据库关系 |
 | OisStateStore.Load | 加载实体和只读患者列表 | 大部分 OIS 对象需要跟踪，供规则变更后保存 |
 | EfCommandTransaction.Track | 将规则中新建的 Detached 对象 Add 进上下文 | 已查询的跟踪对象无需再次 Add |
-| OisGate + SELECT FOR UPDATE | 多个 API 进程也通过数据库串行获取写锁 | 它是演示范围的串行写入设计，不是 EF 通用默认机制 |
+| OisCommandLock + 占用复合主键 | 多个 API 进程按患者/资源/目标互斥，唯一约束防止重复占格 | 是本项目显式设计，不是 EF 通用默认机制 |
 | SaveChanges + Commit | 业务、审计、幂等记录一起提交 | 不能拆成分别提交的“先业务后审计” |
 | Hosting/DatabaseInitialization.cs：MigrateAsync / StaffAccounts.Seed | 演示启动时应用迁移及初始化账号 | 生产升级和多副本需独立设计 |
 
@@ -821,7 +821,7 @@ EF 可通过标准 ILogger 管道记录日志；本例不默认启用敏感参�
 
 以预约为例，`OisStateStore.Load` 返回内部数据容器，已有实体大多处于跟踪状态；`OisSession` 将各集合交给所属模块。`SchedulingModule` 修改已有预约，或向状态列表加入新的 Reservation；此时修改还发生在内存中。`EfCommandTransaction.Track` 将新增对象加入 DbContext，随后 `SaveChangesAsync` 把业务变更、审计、幂等响应及 Outbox 写入同一事务，`CommitAsync` 才完成提交。
 
-Version 有两层作用：规则执行前比较客户端版本与当前实体版本，避免基于过期页面操作；保存时 EF 根据并发令牌检测数据库行是否已改变。普通整数令牌不会自行递增，更新操作必须按业务语义维护它。预约范围冲突则依靠 OisGate 锁和时段规则解决，不能仅靠 Version。
+Version 有两层作用：规则执行前比较客户端版本与当前实体版本，避免基于过期页面操作；保存时 EF 根据并发令牌检测数据库行是否已改变。普通整数令牌不会自行递增，更新操作必须按业务语义维护它。预约范围冲突由时段预检查与 ReservationOccupancy 复合主键共同保护，局部锁协调设备和计划状态，不能仅靠 Version。
 
 模型变更是另一条链路：实体与映射变化 → 生成迁移 → 审查 Up / Down 与模型快照 → 在隔离环境验证升级 → 应用迁移。修改 C# 属性不会直接修改已存在的 MySQL 表，历史迁移也不应为了匹配当前实体而被随意重写。
 

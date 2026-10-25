@@ -17,7 +17,10 @@
 |OisDraft|个人处方/计划草稿，由 Support 管理|
 |OisTask|责任角色待办、已读和处理结果|
 |OisAudit|操作者、变更内容、请求关联号及时间|
-|OisGate|所有 OIS 写事务先获取的排他行锁|
+|ReservationOccupancy|15分钟资源/患者占用明细，复合主键防重叠|
+|ActiveExecution|当前正在执行的资源/患者独占记录|
+|OisCommandLock|患者、资源和目标记录的局部事务互斥键|
+|OisGate|历史全局锁表，新版运行时不再使用|
 
 具体字段和索引以 `backend/ClinicFlow.Infrastructure/Persistence/OisModel.cs` 及模型快照为准。患者及计划关联受约束，签署历史不覆盖；版本校验、半开区间冲突和角色规则由服务端统一执行。
 
@@ -57,3 +60,21 @@ OutboxMessage 保存 Id（稳定事件 ID）、Type、Version、Payload、Occurr
 ```
 
 设计时工厂不是生产连接配置；实际升级使用已配置连接的 API 启动迁移，或经过审核的 SQL。回退 AddIntegrationOutbox 会删除消息表，必须先保全待发与已发记录，并协调外部消费者；不能把普通表回退当成撤回已投递事件。四层迁移本身不改变现有业务表。
+
+## 时间格占用与局部锁迁移
+
+`20261025121112_SlotOccupancy` 新建三表，不修改预约请求和工作台响应：
+
+| 表 | 键及约束 | 生命周期 |
+| --- | --- | --- |
+| ReservationOccupancy | 主键 `(SubjectType, SubjectId, SlotStartUtc)`；ReservationId 外键及索引 | 每个未取消预约按15分钟拆分资源格及患者格；取消删除，恢复重建，改期差量更新 |
+| ActiveExecution | 主键 `(SubjectType, SubjectId)`；DeliveryId 外键及索引 | 正在治疗的资源和患者占用；完成/中断后删除 |
+| OisCommandLock | 主键 Id | entity、patient、resource 的稳定互斥键；事务释放锁但不删除键 |
+
+SubjectType 为 Resource 或 Patient，SubjectId 为资源字符串 ID 或患者整数 ID 的十进制字符串。主键列非空。普通的 Reservation(ResourceId, StartUtc) 索引保留用于查询；防重复由新表复合主键承担。
+
+Up 在永久建表前检查所有未取消预约的时间粒度、时长、区间重叠，以及正在执行的患者/机器冲突。检查通过后回填所有非 Cancelled 预约（包括 Completed、NoShow、NotExecuted）和 InProgress 执行。检查失败不会自动跳过或取消记录，应先核对历史数据与审计。
+
+升级前备份并停止所有旧版写入；不能混跑只使用 OisGate 的旧应用。MySQL DDL 无法保证整个迁移原子提交，意外中断时检查实际结构与 `__EFMigrationsHistory`，必要时恢复备份。Down 删除三张派生表，不删除预约、执行、审计或幂等历史；重新 Up 可以从这些业务事实回填。停机回退后才能重新启动旧代码。
+
+验证命令：`./scripts/test.sh --filter FullyQualifiedName~SlotOccupancyTests`。完整回归另运行 `./scripts/test.sh`；历史升级与备份恢复使用 `./scripts/upgrade-drill.sh`。维护中不能只写预约表而不维护占用，不能在线清空 OisCommandLock。

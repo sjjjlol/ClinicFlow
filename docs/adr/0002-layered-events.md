@@ -1,5 +1,7 @@
 # DDD 分层程序集与两类事件
 
+> 后续决策：本文中的 OisGate 全局写锁已由 [ADR-0003](0003-slot-occupancy.md) 的局部锁与时间格占用替代；单体事务及上下文协作仍保留。
+
 状态：已采纳。承接 [ADR-0001](0001-modular-monolith.md) 的模块化单体与同步事务决策，替代其中“暂不拆程序集”的实现安排。
 
 原工程将 Controller、用例、领域对象及 EF 持久化放在一个 Web 程序集中，领域目录无法阻止基础设施依赖进入业务代码。现在采用 Domain、Application、Infrastructure、API 四个项目，Domain 不依赖其他项目，Application 仅依赖 Domain；基础设施实现应用端口，API 通过组合根装配它们。HTTP DTO、应用 Command、工作台响应与实体分别定义。

@@ -25,6 +25,9 @@ namespace ClinicFlow.Tests
             // Seed the retired schema directly: this must not depend on today's domain model.
             foreach (var id in new[] { "failed", "passed", "pending" })
             {
+                // Separate historical attempts must not overlap on the same machine.
+                var start = new DateTime(2029, 12, id == "failed" ? 29 : id == "passed" ? 30 : 31, 9, 0, 0, DateTimeKind.Utc);
+                var end = start.AddHours(1);
                 var outcome = id == "pending" ? "" : id == "failed" ? "Failed" : "Passed";
                 var failure = id == "failed" ? "Equipment" : "";
                 var signedBy = id == "pending" ? "" : "physicist";
@@ -36,7 +39,7 @@ namespace ClinicFlow.Tests
                 await db.Database.ExecuteSqlInterpolatedAsync($@"
                     INSERT INTO Reservation (Id, Version, Kind, ResourceId, StartUtc, EndUtc, Status, Reason,
                         ValidationOutcome, ValidationNote, FailureType, SignedBy, SignedUtc, MeasuredValues, ResultAttachment)
-                    VALUES ({id}, 2, 'Experiment', 'linac-a', '2030-01-01 09:00:00', '2030-01-01 10:00:00', {status}, '',
+                    VALUES ({id}, 2, 'Experiment', 'linac-a', {start}, {end}, {status}, '',
                         {outcome}, {note}, {failure}, {signedBy}, {signedUtc}, {measured}, {attachment})");
             }
             await migrator.MigrateAsync();

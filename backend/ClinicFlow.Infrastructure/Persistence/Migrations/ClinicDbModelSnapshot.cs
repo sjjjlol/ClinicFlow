@@ -62,6 +62,27 @@ namespace ClinicFlow.Migrations
                     b.ToTable("Idempotency");
                 });
 
+            modelBuilder.Entity("ClinicFlow.Ois.ActiveExecution", b =>
+                {
+                    b.Property<string>("SubjectType")
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)");
+
+                    b.Property<string>("SubjectId")
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)");
+
+                    b.Property<string>("DeliveryId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)");
+
+                    b.HasKey("SubjectType", "SubjectId");
+
+                    b.HasIndex("DeliveryId");
+
+                    b.ToTable("ActiveExecution");
+                });
+
             modelBuilder.Entity("ClinicFlow.Ois.CareCase", b =>
                 {
                     b.Property<string>("Id")
@@ -139,6 +160,17 @@ namespace ClinicFlow.Migrations
                     b.HasIndex("TargetId", "Id");
 
                     b.ToTable("OisAudit");
+                });
+
+            modelBuilder.Entity("ClinicFlow.Ois.OisCommandLock", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(160)
+                        .HasColumnType("varchar(160)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("OisCommandLock");
                 });
 
             modelBuilder.Entity("ClinicFlow.Ois.OisDraft", b =>
@@ -492,6 +524,30 @@ namespace ClinicFlow.Migrations
                     b.ToTable("Reservation");
                 });
 
+            modelBuilder.Entity("ClinicFlow.Ois.ReservationOccupancy", b =>
+                {
+                    b.Property<string>("SubjectType")
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)");
+
+                    b.Property<string>("SubjectId")
+                        .HasMaxLength(36)
+                        .HasColumnType("varchar(36)");
+
+                    b.Property<DateTime>("SlotStartUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("ReservationId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)");
+
+                    b.HasKey("SubjectType", "SubjectId", "SlotStartUtc");
+
+                    b.HasIndex("ReservationId");
+
+                    b.ToTable("ReservationOccupancy");
+                });
+
             modelBuilder.Entity("ClinicFlow.Ois.TreatmentDelivery", b =>
                 {
                     b.Property<string>("Id")
@@ -688,6 +744,15 @@ namespace ClinicFlow.Migrations
                         });
                 });
 
+            modelBuilder.Entity("ClinicFlow.Ois.ActiveExecution", b =>
+                {
+                    b.HasOne("ClinicFlow.Ois.TreatmentDelivery", null)
+                        .WithMany()
+                        .HasForeignKey("DeliveryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("ClinicFlow.Ois.CareCase", b =>
                 {
                     b.HasOne("ClinicFlow.Patient", null)
@@ -735,6 +800,15 @@ namespace ClinicFlow.Migrations
                     b.HasOne("ClinicFlow.Ois.OisResource", null)
                         .WithMany()
                         .HasForeignKey("ResourceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ClinicFlow.Ois.ReservationOccupancy", b =>
+                {
+                    b.HasOne("ClinicFlow.Ois.Reservation", null)
+                        .WithMany()
+                        .HasForeignKey("ReservationId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

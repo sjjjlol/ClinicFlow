@@ -39,10 +39,10 @@ Support 提供待办和个人草稿。上下文关系见[上下文地图](../CON
 
 1. Controller 将专用 HTTP Request 映射成应用 Command，读取账号、角色、幂等键。
 2. CommandExecutor 校验请求、生成兼容历史的指纹，调用 ICommandTransaction。
-3. EfCommandTransaction 开启事务、锁定 OisGate 单行，先检查幂等结果，再加载状态。
+3. EfCommandTransaction 开启事务，在 Idempotency 唯一行认领或重放请求，经 CommandLocks 按固定顺序获取患者/资源/目标局部锁，复查关联后加载状态。
 4. 用例调用领域行为。聚合只记录领域事件，不发送网络消息。
 5. OisSession 同步处理领域事件：更新相关模块、创建待办、完成实验占用或停机；映射独立 V1 集成事件。
-6. 状态、审计、幂等结果与 OutboxMessage 同事务写入并提交；任一步失败整体回滚。
+6. OccupancyStore 同步 ReservationOccupancy 时间格与 ActiveExecution 实际执行占用；状态、占用、审计、幂等结果与 OutboxMessage 同事务写入并提交，任一步失败整体回滚。
 7. 可选的 OutboxDispatcher 在另一事务中投递已经提交的消息。默认没有传输实现或后台消费者。
 
 处方更新清空当前计划后，PrescriptionSigned 触发待办；PlanRegistered 触发当前计划引用更新；PlanValidated 触发实验完成以及失败处理；TreatmentFinished 的中断结果触发待办。详情、契约版本和重试语义见[领域事件与集成事件](events.md)。
@@ -61,7 +61,7 @@ ClinicDb、OisModel、OisStateStore 位于 Infrastructure/Persistence；OisState
 
 ## 范围、兼容性与验证
 
-部署仍只有应用和 MySQL，前端静态托管。全量工作集和单行写锁适用于演示，仍限制吞吐量；附件是外部引用，不上传或解析。未实现跨服务 Inbox、消息总线、生产调度器或独立服务部署。
+部署仍只有应用和 MySQL，前端静态托管。全量工作集仍限制吞吐量；已移除 OisGate 全局写锁，同患者/资源/目标局部互斥与占用唯一约束见 [ADR-0003](adr/0003-slot-occupancy.md)；附件是外部引用，不上传或解析。未实现跨服务 Inbox、消息总线、生产调度器或独立服务部署。
 
 历史迁移保留；SeparatePhysicalValidation 分离验证记录，AddIntegrationOutbox 仅新增消息表。迁移项目现在是 ClinicFlow.Infrastructure，启动项目是 ClinicFlow.Api。升级与回退约束见[数据库](database-design.md)、[运行手册](runbook.md)及 [ADR-0002](adr/0002-layered-events.md)。
 

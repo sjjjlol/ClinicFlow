@@ -83,6 +83,36 @@ namespace ClinicFlow.Tests
         }
 
         [Fact]
+        public async Task Treatment_start_claims_patient_and_machine_and_finish_releases_only_execution()
+        {
+            await Seed(true);
+            await using (var db = fixture.Db())
+                await new CommandExecutor(new EfCommandTransaction(db), new Clock()).Execute(
+                    new StartTreatmentCommand { Id = "booking", Version = 1, PlanId = "plan", IdentityChecked = true },
+                    "clinician", "Clinician", "start", "execution", default,
+                    (s, c, a, r, n) => s.Scheduling.StartTreatment(c, a, r, n));
+            string id;
+            await using (var db = fixture.Db())
+            {
+                Assert.Equal(2, await db.Set<ActiveExecution>().CountAsync());
+                Assert.Equal(8, await db.Set<ReservationOccupancy>().CountAsync());
+                id = (await db.Set<TreatmentDelivery>().SingleAsync()).Id;
+            }
+            await using (var db = fixture.Db())
+                await new CommandExecutor(new EfCommandTransaction(db), new Clock()).Execute(
+                    new FinishTreatmentCommand { Id = id, Version = 1, Outcome = "Interrupted", Text = "follow up" },
+                    "clinician", "Clinician", "finish", "execution", default,
+                    (s, c, a, r, n) => s.Scheduling.FinishTreatment(c, a, r, n));
+            await using (var db = fixture.Db())
+            {
+                Assert.Empty(await db.Set<ActiveExecution>().ToListAsync());
+                Assert.Equal(8, await db.Set<ReservationOccupancy>().CountAsync());
+                Assert.Equal("Completed", (await db.Set<Reservation>().SingleAsync()).Status);
+                Assert.Equal("Interrupted", (await db.Set<TreatmentDelivery>().SingleAsync()).Outcome);
+            }
+        }
+
+        [Fact]
         public async Task Failure_after_validation_rolls_back_all_modules_and_allows_same_key_retry()
         {
             await Seed(false);
