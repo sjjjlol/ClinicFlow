@@ -47,7 +47,7 @@ namespace ClinicFlow.Tools
                 if (await db.Users.AnyAsync(x => x.Id == "retired-admin")) throw new Exception("Obsolete account survived");
                 await using var command = db.Database.GetDbConnection().CreateCommand();
                 await db.Database.OpenConnectionAsync();
-                command.CommandText = "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name IN ('Appointments','SlotClaims','Tasks','Audits','Resources','Outbox','SyncAttempt','ImagingIdentity','ImagingLink','ImagingAudit')";
+                command.CommandText = "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name IN ('OisGate','Appointments','SlotClaims','Tasks','Audits','Resources','Outbox','SyncAttempt','ImagingIdentity','ImagingLink','ImagingAudit')";
                 if (Convert.ToInt32(await command.ExecuteScalarAsync()) != 0) throw new Exception("Obsolete tables survived");
                 // Existing OIS request keys still replay, without duplicating a case or audit.
                 await new CommandExecutor(new EfCommandTransaction(db), TimeProvider.System).Execute(new CreateCaseCommand { PatientId = 1, Text = "Preserved OIS case" },

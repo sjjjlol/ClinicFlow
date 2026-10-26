@@ -47,3 +47,9 @@ LayerTests 验证 Domain/Application 的依赖方向和响应 DTO 隔离；Modul
 原处方修订与治疗开始互斥、验证失败联动回滚、历史幂等重放等测试继续通过。旧验证记录迁移测试的三次历史实验夹具改为不同日期，避免使用旧业务规则本就不允许的重叠机器时段。
 
 .NET 使用 `clinicflow_tests`，HTTP 使用独立的 `clinicflow_slots_20261025_tests` 和临时测试凭据，升级演练使用 `clinicflow_upgrade_tests`；未迁移现有应用库，未修改 `.env`。前端源码和 HTTP 契约未改变，本次未重跑浏览器测试。
+
+## 2026-10-26 清理退役数据库表
+
+RemoveObsoleteOisGate 删除最后一张退役表 OisGate，并移除当前实体和模型映射；历史迁移保留。完整 .NET 回归44项、EF模型一致性检查、升级/备份恢复演练及应用容器构建通过。新增测试验证该迁移 Down/Up 不影响预约、时间格、审计和幂等记录。
+
+本地 clinicflow 已先停写并备份，再升级至 20261026092403_RemoveObsoleteOisGate。11张退役表清单（OisGate及历史预约/影像/同步模块表）在当前库中的剩余数量为0；17张当前应用表升级前后 CHECKSUM TABLE 结果完全一致，预约11条、slot50条，health=ready。备份位于本地忽略目录 artifacts/cleanup-20261026，不提交Git。

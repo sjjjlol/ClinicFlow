@@ -20,7 +20,6 @@
 |ReservationOccupancy|15分钟资源/患者占用明细，复合主键防重叠|
 |ActiveExecution|当前正在执行的资源/患者独占记录|
 |OisCommandLock|患者、资源和目标记录的局部事务互斥键|
-|OisGate|历史全局锁表，新版运行时不再使用|
 
 具体字段和索引以 `backend/ClinicFlow.Infrastructure/Persistence/OisModel.cs` 及模型快照为准。患者及计划关联受约束，签署历史不覆盖；版本校验、半开区间冲突和角色规则由服务端统一执行。
 
@@ -78,3 +77,9 @@ Up 在永久建表前检查所有未取消预约的时间粒度、时长、区�
 升级前备份并停止所有旧版写入；不能混跑只使用 OisGate 的旧应用。MySQL DDL 无法保证整个迁移原子提交，意外中断时检查实际结构与 `__EFMigrationsHistory`，必要时恢复备份。Down 删除三张派生表，不删除预约、执行、审计或幂等历史；重新 Up 可以从这些业务事实回填。停机回退后才能重新启动旧代码。
 
 验证命令：`./scripts/test.sh --filter FullyQualifiedName~SlotOccupancyTests`。完整回归另运行 `./scripts/test.sh`；历史升级与备份恢复使用 `./scripts/upgrade-drill.sh`。维护中不能只写预约表而不维护占用，不能在线清空 OisCommandLock。
+
+## 移除退役全局锁表
+
+`20261026092403_RemoveObsoleteOisGate` 仅删除退役的 OisGate 表，实体及模型映射同时移除。旧 Appointments、SlotClaims、Tasks、Audits、Resources、Outbox、SyncAttempt、ImagingIdentity、ImagingLink、ImagingAudit 已由 RemoveLegacyModules 清理；当前 OisTask、OisAudit、OisResource、OutboxMessage 仍在使用，不能按相似名称删除。`__EFMigrationsHistory` 也必须保留。
+
+Down 重建 OisGate 并恢复 Id=1 的门闩种子，不影响预约、slot、患者、账号、审计或幂等记录。历史迁移文件保留，以支持从旧版逐步升级。执行前停止旧应用并备份。

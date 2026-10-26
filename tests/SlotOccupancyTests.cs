@@ -32,6 +32,30 @@ namespace ClinicFlow.Tests
             (s, c, a, r, n) => s.Scheduling.BookConsultation(c, a, r, n));
 
         [Fact]
+        public async Task Obsolete_gate_cleanup_preserves_bookings_and_can_roundtrip()
+        {
+            var id = await Book();
+            await using var db = fixture.Db();
+            async Task<int> GateCount()
+            {
+                await db.Database.OpenConnectionAsync();
+                await using var query = db.Database.GetDbConnection().CreateCommand();
+                query.CommandText = "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='OisGate'";
+                return Convert.ToInt32(await query.ExecuteScalarAsync());
+            }
+            Assert.Equal(0, await GateCount());
+            var migrator = db.GetService<IMigrator>();
+            await migrator.MigrateAsync("20261025121112_SlotOccupancy");
+            Assert.Equal(1, await GateCount());
+            await migrator.MigrateAsync();
+            Assert.Equal(0, await GateCount());
+            Assert.Equal(id, (await db.Set<Reservation>().SingleAsync()).Id);
+            Assert.Equal(4, await db.Set<ReservationOccupancy>().CountAsync());
+            Assert.Single(await db.Idempotency.ToListAsync());
+            Assert.Single(await db.Set<OisAudit>().ToListAsync());
+        }
+
+        [Fact]
         public async Task Cancel_releases_slots_restore_reclaims_and_reschedule_preserves_common_slots()
         {
             var id = await Book();
@@ -115,13 +139,10 @@ namespace ClinicFlow.Tests
         }
 
         [Fact]
-        public async Task Unrelated_resources_can_commit_while_another_command_and_old_global_gate_are_locked()
+        public async Task Unrelated_resources_can_commit_while_another_command_is_locked()
         {
             using var entered = new ManualResetEventSlim();
             using var release = new ManualResetEventSlim();
-            await using var gateDb = fixture.Db();
-            await using var gateTx = await gateDb.Database.BeginTransactionAsync();
-            await gateDb.Database.ExecuteSqlRawAsync("SELECT * FROM OisGate WHERE Id=1 FOR UPDATE");
             var first = Task.Run(() => Send(new BookMaintenanceCommand { ResourceId = "linac-a", StartUtc = Start, EndUtc = Start.AddMinutes(30), Reason = "A" },
                 (s, c, a, r, n) =>
                 {
@@ -131,7 +152,7 @@ namespace ClinicFlow.Tests
                 }, "Physicist"));
             try
             {
-                Assert.True(entered.Wait(TimeSpan.FromSeconds(10)), "Command must not wait on the retired global gate");
+                Assert.True(entered.Wait(TimeSpan.FromSeconds(10)), "First command must acquire its scoped locks");
                 await Send(new BookMaintenanceCommand { ResourceId = "linac-b", StartUtc = Start, EndUtc = Start.AddMinutes(30), Reason = "B" },
                     (s, c, a, r, n) => s.Scheduling.BookMaintenance(c, a, r, n), "Physicist").WaitAsync(TimeSpan.FromSeconds(10));
             }

@@ -210,25 +210,6 @@ namespace ClinicFlow.Migrations
                     b.ToTable("OisDraft");
                 });
 
-            modelBuilder.Entity("ClinicFlow.Ois.OisGate", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
-
-                    b.HasKey("Id");
-
-                    b.ToTable("OisGate");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = 1
-                        });
-                });
-
             modelBuilder.Entity("ClinicFlow.Ois.OisResource", b =>
                 {
                     b.Property<string>("Id")

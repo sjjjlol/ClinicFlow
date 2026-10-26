@@ -22,7 +22,6 @@ namespace ClinicFlow.Ois
                 .HasForeignKey<PhysicalValidation>(x => x.ReservationId).OnDelete(DeleteBehavior.Restrict);
             Configure<TreatmentDelivery>(b);
             Configure<OisTask>(b);
-            b.Entity<OisGate>().HasData(new OisGate()); // Historical schema only; commands no longer lock this row.
             b.Entity<OisCommandLock>().HasKey(x => x.Id);
             b.Entity<OisCommandLock>().Property(x => x.Id).HasMaxLength(160);
             b.Entity<ReservationOccupancy>().HasKey(x => new { x.SubjectType, x.SubjectId, x.SlotStartUtc });
